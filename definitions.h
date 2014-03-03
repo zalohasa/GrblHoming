@@ -27,7 +27,6 @@
 #define MM_IN_AN_INCH           25.4
 #define PRE_HOME_Z_ADJ_MM       5.0
 
-#define REQUEST_CURRENT_POS             "?"
 #define SETTINGS_COMMAND_V08a           "$"
 #define SETTINGS_COMMAND_V08c           "$$"
 #define REQUEST_PARSER_STATE_V08c       "$G"

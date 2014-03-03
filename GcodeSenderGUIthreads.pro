@@ -20,7 +20,6 @@ SOURCES += main.cpp\
     options.cpp \
     grbldialog.cpp \
     about.cpp \
-    gcode.cpp \
     timer.cpp \
     atomicintbool.cpp \
     coord3d.cpp \
@@ -31,7 +30,10 @@ SOURCES += main.cpp\
     itemtobase.cpp \
     arcitem.cpp \
     pointitem.cpp \
-    controlparams.cpp
+    controlparams.cpp \
+    gcodecontroller.cpp \
+    gcodegrbl.cpp \
+    gcodemarlin.cpp
 
 HEADERS  += mainwindow.h \
     rs232.h \
@@ -40,7 +42,6 @@ HEADERS  += mainwindow.h \
     definitions.h \
     about.h \
     images.rcc \
-    gcode.h \
     timer.h \
     atomicintbool.h \
     coord3d.h \
@@ -54,7 +55,10 @@ HEADERS  += mainwindow.h \
     pointitem.h \
     termiosext.h \
     controlparams.h \
-    version.h
+    version.h \
+    gcodecontroller.h \
+    gcodegrbl.h \
+    gcodemarlin.h
 
 FORMS    += mainwindow.ui \
     options.ui \

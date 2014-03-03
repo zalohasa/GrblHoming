@@ -10,6 +10,9 @@
 #include "mainwindow.h"
 #include "version.h"
 #include "ui_mainwindow.h"
+#include "gcodegrbl.h"
+#include "gcodemarlin.h"
+
 
 extern Log4Qt::FileAppender *p_fappender;
 
@@ -49,7 +52,11 @@ MainWindow::MainWindow(QWidget *parent) :
     // The thread points out that the documentation for QThread is wrong :) and
     // you should NOT subclass from QThread and override run(), rather,
     // attach your QOBJECT to a thread and use events (signals/slots) to communicate.
-    gcode.moveToThread(&gcodeThread);
+
+    //gcode = new GCodeGrbl();
+    gcode = new GCodeMarlin();
+
+    gcode->moveToThread(&gcodeThread);
     runtimeTimer.moveToThread(&runtimeTimerThread);
 
     ui->lcdWorkNumberX->setDigitCount(8);
@@ -102,42 +109,42 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->verticalSliderZJog,SIGNAL(sliderPressed()),this,SLOT(zJogSliderPressed()));
     connect(ui->verticalSliderZJog,SIGNAL(sliderReleased()),this,SLOT(zJogSliderReleased()));
 
-    connect(this, SIGNAL(sendFile(QString)), &gcode, SLOT(sendFile(QString)));
-    connect(this, SIGNAL(openPort(QString,QString)), &gcode, SLOT(openPort(QString,QString)));
-    connect(this, SIGNAL(closePort(bool)), &gcode, SLOT(closePort(bool)));
-    connect(this, SIGNAL(sendGcode(QString)), &gcode, SLOT(sendGcode(QString)));
-    connect(this, SIGNAL(gotoXYZC(QString)), &gcode, SLOT(gotoXYZC(QString)));
-    connect(this, SIGNAL(axisAdj(char, float, bool, bool, int)), &gcode, SLOT(axisAdj(char, float, bool, bool, int)));
-    connect(this, SIGNAL(setResponseWait(ControlParams)), &gcode, SLOT(setResponseWait(ControlParams)));
+    connect(this, SIGNAL(sendFile(QString)), gcode, SLOT(sendFile(QString)));
+    connect(this, SIGNAL(openPort(QString,QString)), gcode, SLOT(openPort(QString,QString)));
+    connect(this, SIGNAL(closePort(bool)), gcode, SLOT(closePort(bool)));
+    connect(this, SIGNAL(sendGcode(QString)), gcode, SLOT(sendGcode(QString)));
+    connect(this, SIGNAL(gotoXYZC(QString)), gcode, SLOT(gotoXYZC(QString)));
+    connect(this, SIGNAL(axisAdj(char, float, bool, bool, int)), gcode, SLOT(axisAdj(char, float, bool, bool, int)));
+    connect(this, SIGNAL(setResponseWait(ControlParams)), gcode, SLOT(setResponseWait(ControlParams)));
     connect(this, SIGNAL(shutdown()), &gcodeThread, SLOT(quit()));
     connect(this, SIGNAL(shutdown()), &runtimeTimerThread, SLOT(quit()));
     connect(this, SIGNAL(setProgress(int)), ui->progressFileSend, SLOT(setValue(int)));
     connect(this, SIGNAL(setRuntime(QString)), ui->outputRuntime, SLOT(setText(QString)));
-    connect(this, SIGNAL(sendSetHome()), &gcode, SLOT(grblSetHome()));
-    connect(this, SIGNAL(sendGrblReset()), &gcode, SLOT(sendGrblReset()));
-    connect(this, SIGNAL(sendGrblUnlock()), &gcode, SLOT(sendGrblUnlock()));
-    connect(this, SIGNAL(goToHome()), &gcode, SLOT(goToHome()));
+    connect(this, SIGNAL(sendSetHome()), gcode, SLOT(controllerSetHome()));
+    connect(this, SIGNAL(sendGrblReset()), gcode, SLOT(sendControllerReset()));
+    connect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
+    connect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
     connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
     
-    connect(&gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
-    connect(&gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
-    connect(&gcode, SIGNAL(portIsOpen(bool)), this, SLOT(portIsOpen(bool)));
-    connect(&gcode, SIGNAL(addList(QString)),this,SLOT(receiveList(QString)));
-    connect(&gcode, SIGNAL(addListFull(QStringList)),this,SLOT(receiveListFull(QStringList)));
-    connect(&gcode, SIGNAL(addListOut(QString)),this,SLOT(receiveListOut(QString)));
-    connect(&gcode, SIGNAL(stopSending()), this, SLOT(stopSending()));
-    connect(&gcode, SIGNAL(setCommandText(QString)), ui->comboCommand->lineEdit(), SLOT(setText(QString)));
-    connect(&gcode, SIGNAL(setProgress(int)), ui->progressFileSend, SLOT(setValue(int)));
-    connect(&gcode, SIGNAL(setQueuedCommands(int, bool)), this, SLOT(setQueuedCommands(int, bool)));
-    connect(&gcode, SIGNAL(adjustedAxis()), this, SLOT(adjustedAxis()));
-    connect(&gcode, SIGNAL(resetTimer(bool)), &runtimeTimer, SLOT(resetTimer(bool)));
-    connect(&gcode, SIGNAL(enableGrblDialogButton()), this, SLOT(enableGrblDialogButton()));
-    connect(&gcode, SIGNAL(updateCoordinates(Coord3D,Coord3D)), this, SLOT(updateCoordinates(Coord3D,Coord3D)));
-    connect(&gcode, SIGNAL(setLastState(QString)), ui->outputLastState, SLOT(setText(QString)));
-    connect(&gcode, SIGNAL(setUnitsWork(QString)), ui->outputUnitsWork, SLOT(setText(QString)));
-    connect(&gcode, SIGNAL(setUnitsMachine(QString)), ui->outputUnitsMachine, SLOT(setText(QString)));
-    connect(&gcode, SIGNAL(setLivePoint(double, double, bool)), ui->wgtVisualizer, SLOT(setLivePoint(double, double, bool)));
-    connect(&gcode, SIGNAL(setVisCurrLine(int)), ui->wgtVisualizer, SLOT(setVisCurrLine(int)));
+    connect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
+    connect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
+    connect(gcode, SIGNAL(portIsOpen(bool)), this, SLOT(portIsOpen(bool)));
+    connect(gcode, SIGNAL(addList(QString)),this,SLOT(receiveList(QString)));
+    connect(gcode, SIGNAL(addListFull(QStringList)),this,SLOT(receiveListFull(QStringList)));
+    connect(gcode, SIGNAL(addListOut(QString)),this,SLOT(receiveListOut(QString)));
+    connect(gcode, SIGNAL(stopSending()), this, SLOT(stopSending()));
+    connect(gcode, SIGNAL(setCommandText(QString)), ui->comboCommand->lineEdit(), SLOT(setText(QString)));
+    connect(gcode, SIGNAL(setProgress(int)), ui->progressFileSend, SLOT(setValue(int)));
+    connect(gcode, SIGNAL(setQueuedCommands(int, bool)), this, SLOT(setQueuedCommands(int, bool)));
+    connect(gcode, SIGNAL(adjustedAxis()), this, SLOT(adjustedAxis()));
+    connect(gcode, SIGNAL(resetTimer(bool)), &runtimeTimer, SLOT(resetTimer(bool)));
+    connect(gcode, SIGNAL(enableGrblDialogButton()), this, SLOT(enableGrblDialogButton()));
+    connect(gcode, SIGNAL(updateCoordinates(Coord3D,Coord3D)), this, SLOT(updateCoordinates(Coord3D,Coord3D)));
+    connect(gcode, SIGNAL(setLastState(QString)), ui->outputLastState, SLOT(setText(QString)));
+    connect(gcode, SIGNAL(setUnitsWork(QString)), ui->outputUnitsWork, SLOT(setText(QString)));
+    connect(gcode, SIGNAL(setUnitsMachine(QString)), ui->outputUnitsMachine, SLOT(setText(QString)));
+    connect(gcode, SIGNAL(setLivePoint(double, double, bool)), ui->wgtVisualizer, SLOT(setLivePoint(double, double, bool)));
+    connect(gcode, SIGNAL(setVisCurrLine(int)), ui->wgtVisualizer, SLOT(setVisCurrLine(int)));
 
     connect(&runtimeTimer, SIGNAL(setRuntime(QString)), ui->outputRuntime, SLOT(setText(QString)));
 
@@ -291,9 +298,9 @@ MainWindow::~MainWindow()
 // called when user has clicked the close application button
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    gcode.setShutdown();
-    gcode.setAbort();
-    gcode.setReset();
+    gcode->setShutdown();
+    gcode->setAbort();
+    gcode->setReset();
 
     writeSettings();
 
@@ -351,7 +358,7 @@ void MainWindow::begin()
 
 void MainWindow::stop()
 {
-    gcode.setAbort();
+    gcode->setAbort();
 
     // Reenable a bunch of UI
     ui->Begin->setEnabled(true);
@@ -365,8 +372,8 @@ void MainWindow::stop()
 
 void MainWindow::grblReset()
 {
-    gcode.setAbort();
-    gcode.setReset();
+    gcode->setAbort();
+    gcode->setReset();
     emit sendGrblReset();
 }
 
@@ -456,8 +463,8 @@ void MainWindow::openPortCtl(bool reopen)
         // presume button says 'Close' currently, meaning port is open
 
         // Tell gcode port thread to stop what it is doing immediately (within 0.1 sec)
-        gcode.setAbort();
-        gcode.setReset();
+        gcode->setAbort();
+        gcode->setReset();
 
         // Disable a bunch of UI
         ui->Begin->setEnabled(false);
@@ -801,9 +808,9 @@ void MainWindow::preProcessFile(QString filepath)
 
             index++;
 
-            GCode::trimToEnd(strline, '(');
-            GCode::trimToEnd(strline, ';');
-            GCode::trimToEnd(strline, '%');
+            GCodeController::trimToEnd(strline, '(');
+            GCodeController::trimToEnd(strline, ';');
+            GCodeController::trimToEnd(strline, '%');
 
             strline = strline.trimmed();
 
@@ -1235,7 +1242,7 @@ void MainWindow::receiveMsg(QString msg)
 
 void MainWindow::setGRBL()
 {
-    GrblDialog dlg(this, &gcode);
+    GrblDialog dlg(this, gcode);
     dlg.setParent(this);
     dlg.getSettings();
     dlg.exec();

@@ -10,7 +10,7 @@
 #include "grbldialog.h"
 #include "ui_grbldialog.h"
 
-GrblDialog::GrblDialog(QWidget *parent, GCode *gc) :
+GrblDialog::GrblDialog(QWidget *parent, GCodeController *gc) :
     QDialog(parent),
     gcode(gc),
     ui(new Ui::GrblDialog),

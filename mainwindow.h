@@ -26,8 +26,9 @@
 //#include "filesender.h"
 #include "timer.h"
 #include "positem.h"
-#include "gcode.h"
+#include "gcodecontroller.h"
 #include "renderarea.h"
+#include "log4qtdef.h"
 
 #define COMPANY_NAME "zapmaker"
 #define APPLICATION_NAME "GrblController"
@@ -184,7 +185,7 @@ private:
     Ui::MainWindow *ui;
     //FileSender fileSender;
     //QThread fileSenderThread;
-    GCode gcode;
+    GCodeController * gcode;
     QThread gcodeThread;
 
     Timer runtimeTimer;

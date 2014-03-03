@@ -17,7 +17,7 @@
 #include <QBoxLayout>
 #include "definitions.h"
 #include "mainwindow.h"
-#include "gcode.h"
+#include "gcodecontroller.h"
 
 namespace Ui {
 class GrblDialog;
@@ -32,11 +32,11 @@ class GrblDialog : public QDialog
     Q_OBJECT
     
 public:
-    explicit GrblDialog(QWidget *parent, GCode *gcode);
+    explicit GrblDialog(QWidget *parent, GCodeController *gcode);
     ~GrblDialog();
 
     //variables
-    GCode *gcode;
+    GCodeController *gcode;
 
     //methods
     void getSettings();
