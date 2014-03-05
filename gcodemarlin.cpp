@@ -19,7 +19,8 @@ GCodeMarlin::GCodeMarlin()
       incorrectMeasurementUnits(false), incorrectLcdDisplayUnits(false),
       maxZ(0), motionOccurred(false),
       sliderZCount(0),
-      numaxis(DEFAULT_AXIS_COUNT)
+      numaxis(DEFAULT_AXIS_COUNT),
+      manualFeedSetted(false)
 {
     // use base class's timer - use it to capture random text from the controller
     startTimer(1000);
@@ -280,7 +281,7 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
         return false;
     }
 
-    bool ctrlX = line.size() > 0 ? (line.at(0).toLatin1() == CTRL_X) : false;
+    //bool ctrlX = line.size() > 0 ? (line.at(0).toLatin1() == CTRL_X) : false;
 
     bool sentReqForLocation = false;
     bool sentReqForSettings = false;
@@ -305,16 +306,13 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
         motionOccurred = true;
 
     // adds to UI list, but prepends a > indicating a sent command
-    if (ctrlX)
-    {
-        emit addListOut("(CTRL-X)");
-    }
-    else if (!sentReqForLocation)// if requesting location, don't add that "noise" to the output view
+
+    if (!sentReqForLocation)// if requesting location, don't add that "noise" to the output view
     {
         emit addListOut(line);
     }
 
-    if (line.size() == 0 || (!line.endsWith('\r') && !ctrlX))
+    if (line.size() == 0 || (!line.endsWith('\r')))
         line.append('\r');
 
     char buf[BUF_SIZE + 1] = {0};
@@ -329,29 +327,10 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
     for (int i = 0; i < line.length(); i++)
         buf[i] = line.at(i).toLatin1();
 
-    if (ctrlX)
-        diag(qPrintable(tr("SENDING[%d]: 0x%02X (CTRL-X)\n")), currLine, buf[0]);
-    else
-        diag(qPrintable(tr("SENDING[%d]: %s\n")), currLine, buf);
+
+    diag(qPrintable(tr("SENDING[%d]: %s\n")), currLine, buf);
 
     int waitSecActual = waitSec == -1 ? controlParams.waitTime : waitSec;
-
-    /*if (aggressive)
-    {
-        if (ctrlX)
-            sendCount.append(CmdResponse("(CTRL-X)", line.length(), currLine));
-        else
-            sendCount.append(CmdResponse(buf, line.length(), currLine));
-
-        //diag("DG Buffer Add %d", sendCount.size());
-
-        emit setQueuedCommands(sendCount.size(), true);
-
-        waitForOk(result, waitSecActual, false, false, aggressive, false);
-
-        if (shutdownState.get())
-            return false;
-    }*/
 
     if (!port.SendBuf(buf, line.length()))
     {
@@ -420,37 +399,9 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
 {
     int okcount = 0;
 
-    /*if (aggressive)
-    {
-        //if (!port.bytesAvailable()) //more conservative code
-        if (!finalize || !port.bytesAvailable())
-        {
-            int total = 0;
-            bool haveWait = false;
-            foreach (CmdResponse cmdResp, sendCount)
-            {
-                total += cmdResp.count;
-                if (cmdResp.waitForMe)
-                {
-                    haveWait = true;
-                }
-            }
-
-            //printf("Total out (a): %d (%d) (%d)\n", total, sendCount.size(), haveWait);
-
-            if (!haveWait)
-            {
-                if (total < (GRBL_RX_BUFFER_SIZE - 1))
-                {
-                    return true;
-                }
-            }
-        }
-    }*/
 
     char tmp[BUF_SIZE + 1] = {0};
     int count = 0;
-    int waitCount = waitSec * 10;// multiplier depends on sleep values below
     bool status = true;
     result.clear();
     while (!result.contains(RESPONSE_OK) && !result.contains(RESPONSE_ERROR) && !resetState.get())
@@ -462,7 +413,6 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
                 return false;
 
             count++;
-            SLEEP(100);
         }
         else if (n < 0)
         {
@@ -609,14 +559,15 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
             count = 0;
         }
 
-        SLEEP(100);
 
-        if (count > waitCount)
+        //Use a qtimer in single shot mode to control the timeout.
+       /* if (count > waitCount)
         {
+            std::cout << "MABURRI porque count is " << count << " and waitCount is " << waitCount << std::endl;
             // waited too long for a response, fail
             status = false;
             break;
-        }
+        }*/
     }
 
     if (shutdownState.get())
@@ -626,8 +577,6 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
 
     if (status)
     {
-        if (!aggressive)
-            SLEEP(100);
 
         if (resetState.get())
         {
@@ -684,7 +633,6 @@ bool GCodeMarlin::waitForStartupBanner(QString& result, int waitSec, bool failOn
         }
         else
         {
-            emit sendMsg(QString("tamos aqui papito"));
             tmp[n] = 0;
             result.append(tmp);
 
@@ -965,6 +913,8 @@ void GCodeMarlin::timerEvent(QTimerEvent *event)
 
 void GCodeMarlin::sendFile(QString path)
 {
+
+    std::cout << " ---------- INIT SENDING FILE -------------- " << std::endl;
     addList(QString(tr("Sending file '%1'")).arg(path));
 
     // send something to be sure the controller is ready
@@ -1039,6 +989,7 @@ void GCodeMarlin::sendFile(QString path)
                 {
                     strline = strline.toUpper();
                     strline.replace(QRegExp("([A-Z])"), " \\1");
+                    strline = makeLineMarlinFriendly(strline);
                     strline = removeUnsupportedCommands(strline);
                 }
 
@@ -1090,7 +1041,7 @@ void GCodeMarlin::sendFile(QString path)
             float percentComplete = (currLine * 100.0) / totalLineCount;
             setProgress((int)percentComplete);
 
-            if (!aggressive)
+            /*if (!aggressive)
             {
                 sendGcodeLocal(REQUEST_CURRENT_POS);
             }
@@ -1102,34 +1053,10 @@ void GCodeMarlin::sendFile(QString path)
                     pollPosTimer.restart();
                     sendGcodeLocal(REQUEST_CURRENT_POS, false, -1, aggressive);
                 }
-            }
+            }*/
             currLine++;
         } while ((code.atEnd() == false) && (!abortState.get()));
         file.close();
-
-        if (aggressive)
-        {
-            int limitCount = 5000;
-            while (sendCount.size() > 0 && limitCount)
-            {
-                QString result;
-                waitForOk(result, controlParams.waitTime, false, false, aggressive, true);
-                SLEEP(100);
-
-                if (shutdownState.get())
-                    return;
-
-                if (abortState.get())
-                    break;
-
-                limitCount--;
-            }
-
-            if (!limitCount)
-            {
-                err(qPrintable(tr("Gave up waiting for OK\n")));
-            }
-        }
 
         sendGcodeLocal(REQUEST_CURRENT_POS);
 
@@ -1192,6 +1119,89 @@ void GCodeMarlin::sendFile(QString path)
     }
 
     emit setQueuedCommands(0, false);
+}
+
+QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
+{
+    //TODO make this value a config option.
+    float g0feed = 300;
+
+    QString tmp = line.trimmed();
+    tmp = tmp.toUpper();
+    //Marlin does not suppor the F command, it must be inside a G0 or G1 command, so prepend G1 to the command.
+    if (tmp.at(0) == 'F')
+    {
+        QRegExp rx("F(\\d+)");
+        if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
+        {
+            QStringList list = rx.capturedTexts();
+            bool ok = false;
+            float feed = list.at(1).toFloat(&ok);
+            if (ok)
+            {
+               lastExplicitFeed = feed;
+            }
+        }
+        return QString("G1 ") + tmp;
+    }
+
+    if (tmp.at(0) == 'G')
+    {
+        //A few modifications must be done to G0 and G1 commands.
+        //Marling treats G0 as if it were G1, so the machine will not move at the maximun speed but at the last one.
+        //This can cause some problems, so we define a "G0 feed speed", and we append this speed to every G0 command.
+        //This has a side efect, in the next G1 command, Marlin will use the G0 feed speed if no speed is specified, so
+        //we need to save the last non G0 speed, and manually append it to every G1 command that has no F parameter.
+
+        std::cout << "We have a G command" << std::endl;
+        QRegExp rx("G(\\d+)(.*)");
+
+        if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
+        {
+             QStringList list = rx.capturedTexts();
+             std::cout << "list size: " << list.size() << std::endl;
+             bool ok = false;
+             int commandCode = list.at(1).toInt(&ok);
+             std::cout << "G code: " << commandCode << std::endl;
+
+             QString parameters = list.at(2);
+             if (commandCode == 0)
+             {
+                 if (parameters.indexOf("F") < 0)
+                 {
+                     //There is no F parameter, just append it.
+                     manualFeedSetted = true;
+                     return tmp + " F" + QString().setNum(g0feed);
+                 }
+
+             } else if (commandCode == 1)
+             {
+                 int i = parameters.indexOf("F");
+                 if (i < 0 && manualFeedSetted)
+                 {
+                    //Restore the last saved feed
+                     manualFeedSetted = false;
+                     return tmp + " F" + QString().setNum(lastExplicitFeed);
+                 } else if (i >= 0)
+                 {
+                    QRegExp exp("F(\\d+\\.*\\d*)");
+                    if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
+                    {
+                        QStringList lst = exp.capturedTexts();
+                        ok = false;
+                        float feed = lst.at(1).toFloat(&ok);
+                        if (ok)
+                            lastExplicitFeed = feed;
+                    }
+                 }
+             }
+
+        }
+
+
+    }
+
+    return line;
 }
 
 

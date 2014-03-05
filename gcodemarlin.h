@@ -85,6 +85,7 @@ private:
     QString reducePrecision(QString line);
     bool isGCommandValid(float value, bool& toEndOfLine);
     bool isMCommandValid(float value);
+    QString makeLineMarlinFriendly(const QString& line);
 
     QString getMoveAmountFromString(QString prefix, QString item);
     bool SendJog(QString strline, bool absoluteAfterAxisAdj);
@@ -120,6 +121,8 @@ private:
     int sliderZCount;
     QStringList grblCmdErrors;
     QStringList grblFilteredCmds;
+    float lastExplicitFeed;
+    bool manualFeedSetted;
 
     int sentI;
     int rcvdI;
