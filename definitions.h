@@ -29,7 +29,7 @@
 
 #define SETTINGS_COMMAND_V08a           "$"
 #define SETTINGS_COMMAND_V08c           "$$"
-#define REQUEST_PARSER_STATE_V08c       "$G"
+
 #define SET_UNLOCK_STATE_V08c           "$X"
 
 #define REGEXP_SETTINGS_LINE    "(\\d+)\\s*=\\s*([\\w\\.]+)\\s*\\(([^\\)]*)\\)"

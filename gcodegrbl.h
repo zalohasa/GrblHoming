@@ -31,6 +31,7 @@
 
 #define CTRL_X '\x18'
 #define REQUEST_CURRENT_POS             "?"
+#define REQUEST_PARSER_STATE_V08c       "$G"
 
 #define DEFAULT_AXIS_COUNT      3
 #define MAX_AXIS_COUNT          4

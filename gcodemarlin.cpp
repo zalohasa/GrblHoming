@@ -76,47 +76,20 @@ void GCodeMarlin::sendControllerUnlock()
 void GCodeMarlin::controllerSetHome()
 {
     clearToHome();
-
-    if (numaxis == MAX_AXIS_COUNT)
-        gotoXYZC("G92 x0 y0 z0 c0");
-    else
-        gotoXYZC("G92 x0 y0 z0");
+    gotoXYZC("G92 x0 y0 z0");
 }
 
 void GCodeMarlin::goToHome()
 {
-    /*double maxZOver = maxZ;
-
-    if (doubleDollarFormat)
-    {
-        maxZOver += (controlParams.useMm ? PRE_HOME_Z_ADJ_MM : (PRE_HOME_Z_ADJ_MM / MM_IN_AN_INCH));
-    }
-    else
-    {
-        // all reporting is in mm
-        maxZOver += PRE_HOME_Z_ADJ_MM;
-    }
-
-    QString zpos = QString::number(maxZOver);
-
-    gotoXYZC(QString("G0 z").append(zpos));
-
-    if (numaxis == MAX_AXIS_COUNT)
-        gotoXYZC("G1 x0 y0 z0 c0");
-    else
-        gotoXYZC("G1 x0 y0 z0");
-
-    maxZ -= maxZOver;*/
-
     sendGcodeLocal("G28");
 
-    pollPosWaitForIdle(false);
+    pollPosWaitForIdle();
 }
 
 // Slot called from other threads (i.e. main window, grbl dialog, etc.)
 void GCodeMarlin::sendGcode(QString line)
 {
-    bool checkMeasurementUnits = false;
+
 
     // empty line means we have just opened the com port
     if (line.length() == 0)
@@ -149,21 +122,21 @@ void GCodeMarlin::sendGcode(QString line)
             return;
 
 
-        checkMeasurementUnits = true;
+
     }
 
     else
     {
-        pollPosWaitForIdle(false);
+        pollPosWaitForIdle();
         // normal send of actual commands
         sendGcodeLocal(line, false);
     }
 
-    pollPosWaitForIdle(checkMeasurementUnits);
+    pollPosWaitForIdle();
 }
 
 // keep polling our position and state until we are done running
-void GCodeMarlin::pollPosWaitForIdle(bool checkMeasurementUnits)
+void GCodeMarlin::pollPosWaitForIdle()
 {
     for (int i = 0; i < 10000; i++)
     {
@@ -204,13 +177,13 @@ void GCodeMarlin::sendGcodeAndGetResult(int id, QString line)
 
 // To be called only from this class, not from other threads. Use above two methods for that.
 // Wraps sendGcodeInternal() to allow proper handling of failure cases, etc.
-bool GCodeMarlin::sendGcodeLocal(QString line, bool recordResponseOnFail /* = false */, int waitSec /* = -1 */, bool aggressive /* = false */, int currLine /* = 0 */)
+bool GCodeMarlin::sendGcodeLocal(QString line, bool recordResponseOnFail /* = false */, int waitSec /* = -1 */, int currLine /* = 0 */)
 {
     QString result;
     sendMsg("");
     resetState.set(false);
 
-    bool ret = sendGcodeInternal(line, result, recordResponseOnFail, waitSec, aggressive, currLine);
+    bool ret = sendGcodeInternal(line, result, recordResponseOnFail, waitSec, currLine);
     if (shutdownState.get())
         return false;
 
@@ -225,13 +198,7 @@ bool GCodeMarlin::sendGcodeLocal(QString line, bool recordResponseOnFail /* = fa
             port.Reset();
         }
     }
-    else
-    {
-        if (checkMarlin(result))
-        {
-            emit enableGrblDialogButton();
-        }
-    }
+
     resetState.set(false);
     return ret;
 }
@@ -270,7 +237,7 @@ bool GCodeMarlin::checkMarlin(const QString& result)
 }
 
 // Wrapped method. Should only be called from above method.
-bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordResponseOnFail, int waitSec, bool aggressive, int currLine /* = 0 */)
+bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordResponseOnFail, int waitSec, int currLine /* = 0 */)
 {
     if (!port.isPortOpen())
     {
@@ -285,16 +252,12 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
 
     bool sentReqForLocation = false;
     bool sentReqForSettings = false;
-    bool sentReqForParserState = false;
 
     if (!line.compare(REQUEST_CURRENT_POS))
     {
         sentReqForLocation = true;
     }
-    else if (!line.compare(REQUEST_PARSER_STATE_V08c))
-    {
-        sentReqForParserState = true;
-    }
+
     else if (!line.compare(SETTINGS_COMMAND_V08a))
     {
         if (doubleDollarFormat)
@@ -343,7 +306,7 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
     else
     {
         sentI++;
-        if (!waitForOk(result, waitSecActual, sentReqForLocation, sentReqForParserState, aggressive, false))
+        if (!waitForOk(result, waitSecActual, sentReqForLocation, false))
         {
             diag(qPrintable(tr("WAITFOROK FAILED\n")));
             if (shutdownState.get())
@@ -395,32 +358,20 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
     return true;
 }
 
-bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocation, bool sentReqForParserState, bool aggressive, bool finalize)
+bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocation, bool finalize)
 {
-    int okcount = 0;
-
-
     char tmp[BUF_SIZE + 1] = {0};
-    int count = 0;
+
     bool status = true;
     result.clear();
     while (!result.contains(RESPONSE_OK) && !result.contains(RESPONSE_ERROR) && !resetState.get())
     {
         int n = port.PollComportLine(tmp, BUF_SIZE);
-        if (n == 0)
-        {
-            if (aggressive && sendCount.size() == 0)
-                return false;
-
-            count++;
-        }
-        else if (n < 0)
+        if (n < 0)
         {
             QString Mes(tr("Error reading data from COM port\n"))  ;
             err(qPrintable(Mes));
 
-            if (aggressive && sendCount.size() == 0)
-                return false;
         }
         else
         {
@@ -433,134 +384,16 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
                 tmpTrim.remove(pos, port.getDetectedLineFeed().size());
             QString received(tmp);
 
-            if (aggressive)
-            {
-                if (received.contains(RESPONSE_OK))
-                {
-                    if (sendCount.isEmpty()) {
-                        err(qPrintable(tr("Unexpected: list is empty (o)!")));
-                    }
-                    else
-                    {
-                        CmdResponse cmdResp = sendCount.takeFirst();
-                        diag(qPrintable(tr("GOT[%d]:%s for %s\n")), cmdResp.line, tmpTrim.toLocal8Bit().constData(), cmdResp.cmd.toLocal8Bit().constData());
-
-                        //diag("DG Buffer %d", sendCount.size());
-
-                        emit setQueuedCommands(sendCount.size(), true);
-                    }
-                    rcvdI++;
-                    okcount++;
-                }
-                else if (received.contains(RESPONSE_ERROR))
-                {
-                    QString orig(tr("Error?"));
-                    if (sendCount.isEmpty())
-                        err(qPrintable(tr("Unexpected: list is empty (e)!")));
-                    else
-                    {
-                        CmdResponse cmdResp = sendCount.takeFirst();
-                        orig = cmdResp.cmd;
-                        diag(qPrintable(tr("GOT[%d]:%s for %s\n")), cmdResp.line, tmpTrim.toLocal8Bit().constData(), orig.toLocal8Bit().constData());
-
-                        //diag("DG Buffer %d", sendCount.size());
-
-                        emit setQueuedCommands(sendCount.size(), true);
-                    }
-                    errorCount++;
-                    QString result;
-                    QTextStream(&result) << received << " [for " << orig << "]";
-                    emit addList(result);
-                    grblCmdErrors.append(result);
-                    rcvdI++;
-                }
-                else
-                {
-                    diag(qPrintable(tr("GOT:%s\n")), tmpTrim.toLocal8Bit().constData());
-                    parseCoordinates(received, aggressive);
-                }
-
-                int total = 0;
-                foreach (CmdResponse cmdResp, sendCount)
-                {
-                    total += cmdResp.count;
-                }
-
-                //printf("Total out (b): %d (%d)\n", total, sendCount.size());
-                //printf("SENT:%d RCVD:%d\n", sentI, rcvdI);
-
-                if (total >= (GRBL_RX_BUFFER_SIZE - 1))
-                {
-                    //diag("DG Loop again\n");
-                    result.clear();
-                    continue;
-                }
-                else if (port.bytesAvailable())
-                {
-                    // comment out this block for more conservative approach
-                    if (!finalize && okcount > 0)
-                    {
-                        //diag("DG Leave early\n");
-                        return true;
-                    }
-
-                    result.clear();
-                    continue;
-                }
-                else
-                {
-                    return true;
-                }
-            }
-            else
-            {
-                diag(qPrintable(tr("GOT:%s\n")), tmpTrim.toLocal8Bit().constData());
-            }
+            diag(qPrintable(tr("GOT:%s\n")), tmpTrim.toLocal8Bit().constData());
 
             if (!received.contains(RESPONSE_OK) && !received.contains(RESPONSE_ERROR))
             {
-                if (sentReqForParserState)
-                {
-                    const QRegExp rx("\\[([\\s\\w\\.\\d]+)\\]");
-
-                    if (rx.indexIn(received, 0) != -1 && rx.captureCount() == 1)
-                    {
-                        QStringList list = rx.capturedTexts();
-                        if (list.size() == 2)
-                        {
-                            QStringList items = list.at(1).split(" ");
-                            if (items.contains("G20"))// inches
-                            {
-                                if (controlParams.useMm)
-                                    incorrectMeasurementUnits = true;
-                                else
-                                    incorrectMeasurementUnits = false;
-                            }
-                            else if (items.contains("G21"))// millimeters
-                            {
-                                if (controlParams.useMm)
-                                    incorrectMeasurementUnits = false;
-                                else
-                                    incorrectMeasurementUnits = true;
-                            }
-                            else
-                            {
-                                // not in list!
-                                incorrectMeasurementUnits = true;
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    parseCoordinates(received, aggressive);
-                }
+                parseCoordinates(received);
             }
-            count = 0;
         }
 
 
-        //Use a qtimer in single shot mode to control the timeout.
+        //TODO Use a qtimer in single shot mode to control the timeout. (Is this really necesary in Marlin?)
        /* if (count > waitCount)
         {
             std::cout << "MABURRI porque count is " << count << " and waitCount is " << waitCount << std::endl;
@@ -658,6 +491,7 @@ bool GCodeMarlin::waitForStartupBanner(QString& result, int waitSec, bool failOn
                 }
                 else
                 {
+                    pollPosWaitForIdle();
                     emit enableGrblDialogButton();
                 }
                 break;
@@ -725,89 +559,21 @@ bool GCodeMarlin::waitForStartupBanner(QString& result, int waitSec, bool failOn
     return status;
 }
 
-void GCodeMarlin::parseCoordinates(const QString& received, bool aggressive)
+void GCodeMarlin::parseCoordinates(const QString& received)
 {
 
     std::cout << "parsing coordinates" << std::endl;
-    if (aggressive)
-    {
-        int ms = parseCoordTimer.elapsed();
-        if (ms < 500)
-            return;
-
-        parseCoordTimer.restart();
-    }
-
     bool good = false;
-    /*int captureCount ;
-    QString state;
-    QString prepend;
-    QString append;
-    QString preamble = "([a-zA-Z]+),MPos:";
-    if (!doubleDollarFormat)
-    {
-        prepend = "\\[";
-        append = "\\]";
-        preamble = "MPos:" ;
-    }
-    QString coordRegExp;
-    QRegExp rxStateMPos;
-    QRegExp rxWPos;
-    /// 3 axis
-    QString format("(-*\\d+\\.\\d+),(-*\\d+\\.\\d+)") ;
-    int maxaxis = MAX_AXIS_COUNT, naxis ;
-    for (naxis = DEFAULT_AXIS_COUNT; naxis <= maxaxis; naxis++) {
-        if (!doubleDollarFormat)
-            captureCount = naxis ;
-        else
-            captureCount = naxis + 1 ;
-        //
-        format += ",(-*\\d+\\.\\d+)" ;
-        coordRegExp = prepend + format + append ;
-        rxStateMPos = QRegExp(preamble + coordRegExp);
-        rxWPos = QRegExp(QString("WPos:") + coordRegExp);
-        good = rxStateMPos.indexIn(received, 0) != -1
-               && rxStateMPos.captureCount() == captureCount
-               && rxWPos.indexIn(received, 0) != -1
-               && rxWPos.captureCount() == naxis
-               ;
-        // find ...
-        if (good)
-            break;
-    }*/
 
     QString format(".*X:(-*\\d+\\.\\d+)Y:(-*\\d+\\.\\d+)Z:(-*\\d+\\.\\d+).*");
     QRegExp rxWPos = QRegExp(format);
-    std::cout << "ESto es lo que recibo: " << received.toStdString() << std::endl;
+
     if (rxWPos.indexIn(received, 0) != -1)
     {
         good = true;
     }
-    else
-    {
-        std::cout << "Esto ye una merda de regex" << std::endl;
-    }
-
 
     if (good) {  /// naxis contains number axis
-        /*if (numaxis <= DEFAULT_AXIS_COUNT)
-        {
-            if (naxis > DEFAULT_AXIS_COUNT)
-            {
-                QString msg = tr("Incorrect - extra axis present in hardware but options set for only 3 axes. Please fix options.");
-                emit addList(msg);
-                emit sendMsg(msg);
-            }
-        }
-        else
-        {
-            if (naxis <= DEFAULT_AXIS_COUNT)
-            {
-                QString msg = tr("Incorrect - extra axis not present in hardware but options set for > 3 axes. Please fix options.");
-                emit addList(msg);
-                emit sendMsg(msg);
-            }
-        }*/
 
         //numaxis = naxis;
         QStringList list = rxWPos.capturedTexts();
@@ -929,6 +695,10 @@ void GCodeMarlin::sendFile(QString path)
     QFile file(path);
     if (file.open(QFile::ReadOnly))
     {
+
+        QTime totalTime(0,0,0);
+        totalTime.start();
+
         float totalLineCount = 0;
         QTextStream code(&file);
         while ((code.atEnd() == false))
@@ -941,27 +711,9 @@ void GCodeMarlin::sendFile(QString path)
 
         code.seek(0);
 
-        // set here once so that it doesn't change in the middle of a file send
-        bool aggressive = controlParams.useAggressivePreload;
-        if (aggressive)
-        {
-            sendCount.clear();
-            //if (sendCount.size() == 0)
-            //{
-            //    diag("DG Buffer 0 at start\n"));
-            //}
-
-            emit setQueuedCommands(sendCount.size(), true);
-        }
-
         sentI = 0;
         rcvdI = 0;
         emit resetTimer(true);
-
-        parseCoordTimer.restart();
-
-        QTime pollPosTimer;
-        pollPosTimer.start();
 
         int currLine = 0;
         bool xyRateSet = false;
@@ -981,17 +733,16 @@ void GCodeMarlin::sendFile(QString path)
 
             strline = strline.trimmed();
 
-            if (strline.size() == 0)
-            {}//ignore comments
-            else
+            if (strline.size() > 0)
             {
                 if (controlParams.filterFileCommands)
                 {
                     strline = strline.toUpper();
                     strline.replace(QRegExp("([A-Z])"), " \\1");
-                    strline = makeLineMarlinFriendly(strline);
                     strline = removeUnsupportedCommands(strline);
                 }
+
+                strline = makeLineMarlinFriendly(strline);
 
                 if (strline.size() != 0)
                 {
@@ -1014,13 +765,13 @@ void GCodeMarlin::sendFile(QString path)
                     bool ret = false;
                     if (outputList.size() == 1)
                     {
-                        ret = sendGcodeLocal(outputList.at(0), false, -1, aggressive, currLine + 1);
+                        ret = sendGcodeLocal(outputList.at(0), false, -1, currLine + 1);
                     }
                     else
                     {
                         foreach (QString outputLine, outputList)
                         {
-                            ret = sendGcodeLocal(outputLine, false, -1, aggressive, currLine + 1);
+                            ret = sendGcodeLocal(outputLine, false, -1, currLine + 1);
 
                             if (!ret)
                                 break;
@@ -1041,19 +792,6 @@ void GCodeMarlin::sendFile(QString path)
             float percentComplete = (currLine * 100.0) / totalLineCount;
             setProgress((int)percentComplete);
 
-            /*if (!aggressive)
-            {
-                sendGcodeLocal(REQUEST_CURRENT_POS);
-            }
-            else
-            {
-                int ms = pollPosTimer.elapsed();
-                if (ms >= 1000)
-                {
-                    pollPosTimer.restart();
-                    sendGcodeLocal(REQUEST_CURRENT_POS, false, -1, aggressive);
-                }
-            }*/
             currLine++;
         } while ((code.atEnd() == false) && (!abortState.get()));
         file.close();
@@ -1109,9 +847,21 @@ void GCodeMarlin::sendFile(QString path)
             emit sendMsg(msg);
             emit addList(msg);
         }
+
+        int ms = totalTime.elapsed();
+        int hours = ms / 1000 / 3600;
+        ms = ms - (hours * 3600 * 1000);
+        int min = ms / 60 / 1000;
+        ms = ms - (min * 60 * 1000);
+        int s = ms / 1000;
+        ms = ms - (s * 1000);
+        msg = QString(tr("Time elapsed: %1h, %2m, %3s, %4ms")).arg(QString::number(hours), QString::number(min), QString::number(s), QString::number(ms));
+        emit sendMsg(msg);
+        emit addList(msg);
+
     }
 
-    pollPosWaitForIdle(true);
+    pollPosWaitForIdle();
 
     if (!resetState.get())
     {
@@ -1123,6 +873,9 @@ void GCodeMarlin::sendFile(QString path)
 
 QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 {
+
+    std::cout << "Making line " << line.toStdString() << " Marlin compatible " << std::endl;
+
     //TODO make this value a config option.
     float g0feed = 300;
 
@@ -1145,6 +898,13 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
         return QString("G1 ") + tmp;
     }
 
+    if (tmp.at(0) == 'X' || tmp.at(0) == 'Y' || tmp.at(0) == 'Z')
+    {
+        //This is a modal command. Marlin does not support modal command, so prepend the last Gcommand seen.
+        return lastGCommand + QString(" ") + tmp;
+    }
+
+
     if (tmp.at(0) == 'G')
     {
         //A few modifications must be done to G0 and G1 commands.
@@ -1162,9 +922,11 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
              std::cout << "list size: " << list.size() << std::endl;
              bool ok = false;
              int commandCode = list.at(1).toInt(&ok);
-             std::cout << "G code: " << commandCode << std::endl;
 
-             QString parameters = list.at(2);
+             lastGCommand = "G" + QString::number(commandCode);
+             std::cout << "G code: " << lastGCommand.toStdString() << std::endl;
+
+               QString parameters = list.at(2);
              if (commandCode == 0)
              {
                  if (parameters.indexOf("F") < 0)
@@ -1184,7 +946,7 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                      return tmp + " F" + QString().setNum(lastExplicitFeed);
                  } else if (i >= 0)
                  {
-                    QRegExp exp("F(\\d+\\.*\\d*)");
+                    QRegExp exp("F(\\d+\\.*\\d*)");//Can feed speed be negative? if so, then add change the regex by "F(-*\\d+\\.*\\d*)"
                     if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
                     {
                         QStringList lst = exp.capturedTexts();
@@ -1194,6 +956,38 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                             lastExplicitFeed = feed;
                     }
                  }
+             }
+
+             //Because in marlin we can not pull for position, because that means to break the command buffer in the firmware,
+             //and that breaks the look ahead functionality, we manually parse the GCode, and guess the coordinates from there.
+
+             //TODO Add coordinate parsing for G2 and G3 commands. I guess that the simplest way to do so is to calculate the arc end coordinate.
+             if (commandCode == 0 || commandCode == 1)
+             {
+                QStringList components = parameters.split(" ", QString::SkipEmptyParts);
+                QString c;
+                foreach (c, components)
+                {
+                    float num = c.right(c.size()-1).toFloat();
+                    if (c.at(0) == 'X')
+                    {
+                        machineCoord.x = num;
+                        workCoord.x = num;
+                    }
+                    else if (c.at(0) == 'Y')
+                    {
+                        machineCoord.y = num;
+                        workCoord.y = num;
+                    }
+                    else if (c.at(0) == 'Z')
+                    {
+                        machineCoord.z = num;
+                        workCoord.z = num;
+                    }
+                }
+
+                emit updateCoordinates(machineCoord, workCoord);
+                emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
              }
 
         }
@@ -1258,6 +1052,7 @@ QString GCodeMarlin::removeUnsupportedCommands(QString line)
             // skip line numbers
         }
         else if (s.at(0) == 'X' || s.at(0) == 'Y' || s.at(0) == 'Z'
+                 || s.at(0) == 'E'
                  || s.at(0) == 'A' || s.at(0) == 'B' || s.at(0) == 'C'
                  || s.at(0) == 'I' || s.at(0) == 'J' || s.at(0) == 'K'
                  || s.at(0) == 'F' || s.at(0) == 'L' || s.at(0) == 'S')
@@ -1422,9 +1217,8 @@ bool GCodeMarlin::isGCommandValid(float value, bool& toEndOfLine)
     const static float supported[] =
     {
         0,    1,    2,    3,    4,
-        10,    17,    18,    19,    20,    21,    28,    28.1,    30,    30.1,
-        53,    54,    55,    56,    57,    58,    59,
-        80,    90,    91,    92,    92.1,    93,    94
+        10,    11,    28,    29,    30,    31,
+        90,    91,    92
     };
 
     int len = sizeof(supported) / sizeof(float);
@@ -1434,23 +1228,20 @@ bool GCodeMarlin::isGCommandValid(float value, bool& toEndOfLine)
             return true;
     }
 
-    if (value == 43 || value == 44)
-    {
-        toEndOfLine = true;
-    }
     return false;
 }
 
 bool GCodeMarlin::isMCommandValid(float value)
 {
-    // supported values obtained from https://github.com/grbl/grbl/wiki
+    // supported values obtained from https://github.com/ErikZalm/Marlin
 
-    // NOTE: M2 and M30 are supported but they cause occasional grbl lockups
-    // and thus have been removed from the supported list. No harm is caused
-    // by their removal.
     const static float supported[] =
     {
-        0,    3,    4,    5,    8,    9
+        0, 1, 17, 18, 20, 21, 22, 24, 25, 26, 27, 28, 29, 30, 31, 23, 42, 80, 81, 82, 83, 84,
+        85, 92, 104, 105, 106, 107, 109, 114, 115, 117, 119, 126, 127, 128, 129, 140, 150, 190,
+        200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 218, 220, 221, 226, 240, 250, 280, 300,
+        301, 302, 303, 304, 350, 351, 400, 401, 402, 500, 501, 502, 503, 540, 600, 665, 666, 605,
+        907, 908, 928, 999
     };
 
     int len = sizeof(supported) / sizeof(float);
@@ -1672,7 +1463,7 @@ QStringList GCodeMarlin::doZRateLimit(QString inputLine, QString& msg, bool& xyR
 
 void GCodeMarlin::gotoXYZC(QString line)
 {
-    pollPosWaitForIdle(false);
+    pollPosWaitForIdle();
 
     if (sendGcodeLocal(line))
     {
@@ -1702,7 +1493,7 @@ void GCodeMarlin::gotoXYZC(QString line)
             //emit addList("No movement expected for command.");
         }
 
-        pollPosWaitForIdle(false);
+        pollPosWaitForIdle();
     }
     else
     {
@@ -1749,7 +1540,7 @@ void GCodeMarlin::axisAdj(char axis, float coord, bool inv, bool absoluteAfterAx
 
 bool GCodeMarlin::SendJog(QString cmd, bool absoluteAfterAxisAdj)
 {
-    pollPosWaitForIdle(false);
+    pollPosWaitForIdle();
 
     // G91 = distance relative to previous
     bool ret = sendGcodeLocal("G91\r");
@@ -1758,7 +1549,7 @@ bool GCodeMarlin::SendJog(QString cmd, bool absoluteAfterAxisAdj)
 
     if (result)
     {
-        pollPosWaitForIdle(false);
+        pollPosWaitForIdle();
     }
 
     if (absoluteAfterAxisAdj)
@@ -1799,47 +1590,6 @@ void GCodeMarlin::setResponseWait(ControlParams controlParamsIn)
 int GCodeMarlin::getSettingsItemCount()
 {
     return settingsItemCount.get();
-}
-
-// 0.8c and above only!
-void GCodeMarlin::checkAndSetCorrectMeasurementUnits()
-{
-    sendGcodeLocal(REQUEST_PARSER_STATE_V08c, false);
-
-    if (incorrectMeasurementUnits)
-    {
-        if (controlParams.useMm)
-        {
-            emit addList(tr("Options specify use mm but Grbl parser set for inches. Fixing."));
-            setConfigureMmMode(true);
-        }
-        else
-        {
-            emit addList(tr("Options specify use inches but Grbl parser set for mm. Fixing.") );
-            setConfigureInchesMode(true);
-        }
-        incorrectMeasurementUnits = false;// hope this is ok to do here
-        sendGcodeLocal(REQUEST_CURRENT_POS);
-    }
-    else
-    {
-        sendGcodeLocal(SETTINGS_COMMAND_V08c);
-
-        if (incorrectLcdDisplayUnits)
-        {
-            if (controlParams.useMm)
-            {
-                emit addList(tr("Options specify use mm but Grbl reporting set for inches. Fixing."));
-                setConfigureMmMode(false);
-            }
-            else
-            {
-                emit addList(tr("Options specify use inches but Grbl reporting set for mm. Fixing."));
-                setConfigureInchesMode(false);
-            }
-        }
-        incorrectLcdDisplayUnits = false;
-    }
 }
 
 void GCodeMarlin::setOldFormatMeasurementUnitControl()

@@ -78,10 +78,10 @@ protected:
     QString removeUnsupportedCommands(QString line);
 
 private:
-    bool sendGcodeLocal(QString line, bool recordResponseOnFail = false, int waitSec = -1, bool aggressive = false, int currLine = 0);
-    bool waitForOk(QString& result, int waitCount, bool sentReqForLocation, bool sentReqForParserState, bool aggressive, bool finalize);
+    bool sendGcodeLocal(QString line, bool recordResponseOnFail = false, int waitSec = -1, int currLine = 0);
+    bool waitForOk(QString& result, int waitCount, bool sentReqForLocation, bool finalize);
     bool waitForStartupBanner(QString& result, int waitSec, bool failOnNoFound);
-    bool sendGcodeInternal(QString line, QString& result, bool recordResponseOnFail, int waitSec, bool aggressive, int currLine = 0);
+    bool sendGcodeInternal(QString line, QString& result, bool recordResponseOnFail, int waitSec, int currLine = 0);
     QString reducePrecision(QString line);
     bool isGCommandValid(float value, bool& toEndOfLine);
     bool isMCommandValid(float value);
@@ -89,9 +89,8 @@ private:
 
     QString getMoveAmountFromString(QString prefix, QString item);
     bool SendJog(QString strline, bool absoluteAfterAxisAdj);
-    void parseCoordinates(const QString& received, bool aggressive);
-    void pollPosWaitForIdle(bool checkMeasurementUnits);
-    void checkAndSetCorrectMeasurementUnits();
+    void parseCoordinates(const QString& received);
+    void pollPosWaitForIdle();
     void setOldFormatMeasurementUnitControl();
     void setUnitsTypeDisplay(bool millimeters);
     void setConfigureMmMode(bool setGrblUnits);
@@ -116,13 +115,15 @@ private:
     Coord3D machineCoordLastIdlePos, workCoordLastIdlePos;
     double maxZ;
     QList<CmdResponse> sendCount;
-    QTime parseCoordTimer;
+
     bool motionOccurred;
     int sliderZCount;
     QStringList grblCmdErrors;
     QStringList grblFilteredCmds;
+
     float lastExplicitFeed;
     bool manualFeedSetted;
+    QString lastGCommand;
 
     int sentI;
     int rcvdI;
