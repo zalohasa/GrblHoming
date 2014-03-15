@@ -61,10 +61,7 @@ void GCodeMarlin::openPort(QString commPortStr, QString baudRate)
 // Slot for interrupting current operation or doing a clean reset of grbl without changing position values
 void GCodeMarlin::sendControllerReset()
 {
-    clearToHome();
-
-    QString x(CTRL_X);
-    sendGcodeLocal(x, true, SHORT_WAIT_SEC);
+    sendGcodeLocal("M999", true, SHORT_WAIT_SEC);
 }
 
 void GCodeMarlin::sendControllerUnlock()
@@ -76,7 +73,7 @@ void GCodeMarlin::sendControllerUnlock()
 void GCodeMarlin::controllerSetHome()
 {
     clearToHome();
-    gotoXYZC("G92 x0 y0 z0");
+    gotoXYZC("G92 X0 Y0 Z0");
 }
 
 void GCodeMarlin::goToHome()
@@ -373,7 +370,7 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
             err(qPrintable(Mes));
 
         }
-        else
+        else if (n > 0)
         {
             tmp[n] = 0;
             result.append(tmp);
@@ -384,12 +381,17 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
                 tmpTrim.remove(pos, port.getDetectedLineFeed().size());
             QString received(tmp);
 
-            diag(qPrintable(tr("GOT:%s\n")), tmpTrim.toLocal8Bit().constData());
+            if (!received.isEmpty()){
+                diag(qPrintable(tr("GOT:%s\n")), tmpTrim.toLocal8Bit().constData());
 
-            if (!received.contains(RESPONSE_OK) && !received.contains(RESPONSE_ERROR))
-            {
-                parseCoordinates(received);
+                if (!received.contains(RESPONSE_OK) && !received.contains(RESPONSE_ERROR))
+                {
+                    parseCoordinates(received);
+                }
             }
+        } else {
+            //Limit CPU usage while waiting for data.
+            usleep(4000);
         }
 
 
@@ -686,6 +688,9 @@ void GCodeMarlin::sendFile(QString path)
     // send something to be sure the controller is ready
     //sendGcodeLocal("", true, SHORT_WAIT_SEC);
 
+    //Set absolute coordinates
+    sendGcodeLocal("G90\r");
+
     setProgress(0);
     emit setQueuedCommands(0, false);
     grblCmdErrors.clear();
@@ -743,6 +748,7 @@ void GCodeMarlin::sendFile(QString path)
                 }
 
                 strline = makeLineMarlinFriendly(strline);
+                computeCoordinates(strline);
 
                 if (strline.size() != 0)
                 {
@@ -946,7 +952,7 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                      return tmp + " F" + QString().setNum(lastExplicitFeed);
                  } else if (i >= 0)
                  {
-                    QRegExp exp("F(\\d+\\.*\\d*)");//Can feed speed be negative? if so, then add change the regex by "F(-*\\d+\\.*\\d*)"
+                    QRegExp exp("F(\\d+\\.*\\d*)");//Can feed speed be negative? if so, then change the regex by "F(-*\\d+\\.*\\d*)"
                     if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
                     {
                         QStringList lst = exp.capturedTexts();
@@ -957,45 +963,62 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                     }
                  }
              }
-
-             //Because in marlin we can not pull for position, because that means to break the command buffer in the firmware,
-             //and that breaks the look ahead functionality, we manually parse the GCode, and guess the coordinates from there.
-
-             //TODO Add coordinate parsing for G2 and G3 commands. I guess that the simplest way to do so is to calculate the arc end coordinate.
-             if (commandCode == 0 || commandCode == 1)
-             {
-                QStringList components = parameters.split(" ", QString::SkipEmptyParts);
-                QString c;
-                foreach (c, components)
-                {
-                    float num = c.right(c.size()-1).toFloat();
-                    if (c.at(0) == 'X')
-                    {
-                        machineCoord.x = num;
-                        workCoord.x = num;
-                    }
-                    else if (c.at(0) == 'Y')
-                    {
-                        machineCoord.y = num;
-                        workCoord.y = num;
-                    }
-                    else if (c.at(0) == 'Z')
-                    {
-                        machineCoord.z = num;
-                        workCoord.z = num;
-                    }
-                }
-
-                emit updateCoordinates(machineCoord, workCoord);
-                emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
-             }
-
         }
 
 
     }
 
     return line;
+}
+
+void GCodeMarlin::computeCoordinates(const QString &command)
+{
+    QString tmp = command.trimmed();
+    tmp = tmp.toUpper();
+
+    QRegExp rx("G(\\d+)(.*)");
+
+    if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
+    {
+         QStringList list = rx.capturedTexts();
+         bool ok = false;
+         int commandCode = list.at(1).toInt(&ok);
+         QString parameters = list.at(2);
+
+         //Because in marlin we can not pull for position, because that means to break the command buffer in the firmware,
+         //and that breaks the look ahead functionality, we manually parse the GCode, and guess the coordinates from there.
+
+         //TODO Add coordinate parsing for G2 and G3 commands. I guess that the simplest way to do so is to calculate the arc end coordinate.
+         if (commandCode == 0 || commandCode == 1)
+         {
+            QStringList components = parameters.split(" ", QString::SkipEmptyParts);
+            QString c;
+            foreach (c, components)
+            {
+                float num = c.right(c.size()-1).toFloat();
+                if (c.at(0) == 'X')
+                {
+                    machineCoord.x = num;
+                    workCoord.x = num;
+                }
+                else if (c.at(0) == 'Y')
+                {
+                    machineCoord.y = num;
+                    workCoord.y = num;
+                }
+                else if (c.at(0) == 'Z')
+                {
+                    machineCoord.z = num;
+                    workCoord.z = num;
+                }
+            }
+
+            emit updateCoordinates(machineCoord, workCoord);
+            emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
+         }
+
+
+    }
 }
 
 

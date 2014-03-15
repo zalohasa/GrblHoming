@@ -191,6 +191,8 @@ private:
     Timer runtimeTimer;
     QThread runtimeTimerThread;
 
+    int currentController;
+
     //variables
     bool invX;
     bool invY;
@@ -244,6 +246,9 @@ private:
     bool processGCode(QString inputLine, double& x, double& y, double& i, double& j, bool& arc, bool& cw, bool& mm, int& g);
     double decodeLineItem(const QString& item, const int next, bool& valid, int& nextIsValue);
     double decodeDouble(QString value, bool& valid);
+
+    void createGcodeConnects();
+    void deleteGcodeConnects();
 };
 
 

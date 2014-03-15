@@ -16,12 +16,19 @@ Options::Options(QWidget *parent) :
 {
     ui->setupUi(this);
 
+    ui->controllerComboBox->addItem(QString("Grbl"));
+    ui->controllerComboBox->addItem(QString("Marlin"));
+
+
     connect(ui->checkBoxUseMmManualCmds,SIGNAL(toggled(bool)),this,SLOT(toggleUseMm(bool)));
     connect(ui->chkLimitZRate,SIGNAL(toggled(bool)),this,SLOT(toggleLimitZRate(bool)));
     connect(ui->checkBoxFourAxis,SIGNAL(toggled(bool)),this,SLOT(toggleFourAxis(bool)));
+    connect(ui->controllerComboBox, SIGNAL(activated(int)), this, SLOT(controllerChanged(int)));
 
     QSettings settings;
 
+    int selectedController = settings.value(SETTINGS_CONTROLLER, 0).value<int>();
+    ui->controllerComboBox->setCurrentIndex(selectedController);
     QString invX = settings.value(SETTINGS_INVERSE_X, "false").value<QString>();
     QString invY = settings.value(SETTINGS_INVERSE_Y, "false").value<QString>();
     QString invZ = settings.value(SETTINGS_INVERSE_Z, "false").value<QString>();
@@ -88,10 +95,29 @@ Options::~Options()
     delete ui;
 }
 
+void Options::controllerChanged(int index)
+{
+    if (index == 0)
+    {
+        //Selected Gbrl
+        ui->checkBoxFourAxis->setDisabled(false);
+        ui->chkAggressivePreload->setDisabled(false);
+        ui->checkBoxUseMmManualCmds->setDisabled(false);
+    } else if (index == 1)
+    {
+        //Selected marlin
+        ui->checkBoxFourAxis->setDisabled(true);
+        ui->chkAggressivePreload->setDisabled(true);
+        ui->checkBoxUseMmManualCmds->setDisabled(true);
+
+    }
+}
+
 void Options::accept()
 {
     QSettings settings;
 
+    settings.setValue(SETTINGS_CONTROLLER, ui->controllerComboBox->currentIndex());
     settings.setValue(SETTINGS_INVERSE_X, ui->chkInvX->isChecked());
     settings.setValue(SETTINGS_INVERSE_Y, ui->chkInvY->isChecked());
     settings.setValue(SETTINGS_INVERSE_Z, ui->chkInvZ->isChecked());

@@ -99,6 +99,7 @@ private:
     void sendStatusList(QStringList& listToSend);
     void clearToHome();
     bool checkMarlin(const QString& result);
+    void computeCoordinates(const QString& command);
 
 private:
 

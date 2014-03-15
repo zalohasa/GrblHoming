@@ -18,6 +18,10 @@
 
 #include "definitions.h"
 
+#define SETTINGS_CONTROLLER_GRBL            0
+#define SETTINGS_CONTROLLER_MARLIN          1
+
+#define SETTINGS_CONTROLLER                 "controller"
 #define SETTINGS_INVERSE_C                  "inverse.c"
 #define SETTINGS_INVERSE_X                  "inverse.x"
 #define SETTINGS_INVERSE_Y                  "inverse.y"
@@ -60,6 +64,7 @@ public:
     ~Options();
     void accept();
 
+
 signals:
     void setSettings();
 
@@ -67,6 +72,7 @@ private slots:
     void toggleUseMm(bool useMm);
     void toggleLimitZRate(bool limitZ);
     void toggleFourAxis(bool four);
+    void controllerChanged(int index);
 
 private:
     Ui::Options *ui;
