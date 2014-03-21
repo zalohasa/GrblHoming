@@ -42,6 +42,7 @@ void RenderArea::paintEvent(QPaintEvent * /* event */)
     listToRender.rescale(size);
 
     QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
 
     painter.setPen(penProposedPath);
     listToRender.writePath(painter, false);

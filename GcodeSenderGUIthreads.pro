@@ -33,7 +33,8 @@ SOURCES += main.cpp\
     controlparams.cpp \
     gcodecontroller.cpp \
     gcodegrbl.cpp \
-    gcodemarlin.cpp
+    gcodemarlin.cpp \
+    SpilineInterpolate3D.cpp
 
 HEADERS  += mainwindow.h \
     rs232.h \
@@ -58,7 +59,8 @@ HEADERS  += mainwindow.h \
     version.h \
     gcodecontroller.h \
     gcodegrbl.h \
-    gcodemarlin.h
+    gcodemarlin.h \
+    SpilineInterpolate3D.h
 
 FORMS    += mainwindow.ui \
     options.ui \
