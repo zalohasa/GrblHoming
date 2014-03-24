@@ -13,6 +13,8 @@
 #include <QObject>
 #include <iostream>
 
+using std::cout;
+using std::endl;
 
 GCodeMarlin::GCodeMarlin()
     : errorCount(0), doubleDollarFormat(false),
@@ -20,7 +22,8 @@ GCodeMarlin::GCodeMarlin()
       maxZ(0), motionOccurred(false),
       sliderZCount(0),
       numaxis(DEFAULT_AXIS_COUNT),
-      manualFeedSetted(false)
+      manualFeedSetted(false),
+      interpolator(NULL)
 {
     // use base class's timer - use it to capture random text from the controller
     startTimer(1000);
@@ -1663,4 +1666,135 @@ void GCodeMarlin::clearToHome()
 int GCodeMarlin::getNumaxis()
 {
     return numaxis;
+}
+
+bool GCodeMarlin::probeResultToValue(const QString & result, double &zCoord)
+{
+    QRegExp rx("Z:(-*\\d+\\.\\d+)");
+    if (rx.indexIn(result) != -1 && rx.captureCount() > 0)
+    {
+        QStringList list = rx.capturedTexts();
+        bool ok = false;
+        zCoord = list.at(1).toDouble(&ok);
+        if (ok)
+        {
+           return true;
+        } else {
+            return false;
+        }
+    }
+
+}
+
+void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe)
+{
+    cout << "Starting Z Leveling procedure" << endl;
+    if (interpolator != NULL)
+    {
+        delete interpolator;
+
+    }
+
+    double * xValues = new double[xSteps];
+    double * yValues = new double[ySteps];
+    double * zValues = new double[xSteps * ySteps];
+
+    double xLenght = extent.right() - extent.left();
+    double yLenght = extent.bottom() - extent.top();
+
+    cout << "xLenght: " <<xLenght << "ylen: " << yLenght << endl;
+
+    double xInterval = xLenght / (xSteps - 1);
+    double yInterval = yLenght / (ySteps - 1);
+
+    cout << "xInterval: " << xInterval << " yInterval: " << yInterval << endl;
+
+    for (int i = 0; i<xSteps; i++)
+    {
+        xValues[i] = i*xInterval;
+    }
+
+    for (int j = 0; j<ySteps; j++)
+    {
+        yValues[j] = j*yInterval;
+    }
+
+    //We do not have to home XY here, and we assume that the coordinates X0 and Y0 are already setted as the good starting point for the leveling.
+    //TODO Load the F speed for G0 commands
+    sendGcodeLocal("G90\r");
+    sendGcodeLocal("G28 Z0\r");
+    sendGcodeLocal("G0 X0 Y0 F300\r");
+    //Get the first ZDepth in the 0,0 coordinate.
+    QString res;
+    double zCoord = 0.0d;
+    //TODO BORRAR
+    sendGcodeInternal("G0 Z25 F200", res, false, 0);
+
+
+    sendGcodeInternal("G30", res, false, 0);
+    cout << "Result: " << res.toStdString() << endl;
+
+    if (!probeResultToValue(res, zCoord))
+    {
+        cout << "ERROR CONVERTING ZCOORDINATE" << endl;
+        return;
+    }
+
+    double zSafeCoord = zCoord + zSafe;
+    cout << "Safe coordinate: " << zSafeCoord << endl;
+    sendGcodeLocal(QString("G1 Z").append(QString::number(zSafeCoord)));
+
+    //sendGcodeLocal(QString("G1 Z").append(QString::number(zSafe)).append(" F100\r"));
+
+    pollPosWaitForIdle();
+
+    for (int i = 0; i < xSteps; i++)
+    {
+        for (int j = 0; j < ySteps; j++)
+        {
+
+            cout << "Probing in: " << xValues[i] << " - " << yValues[j] << endl;
+            sendGcodeInternal(QString("G1 X").
+                           append(QString::number(xValues[i])).
+                                  append(" Y").
+                                  append(QString::number(yValues[j])).append(" F300"), res, false, 0);
+            sendGcodeInternal("G30", res, false, 0);
+            if (!probeResultToValue(res, zCoord))
+            {
+                cout << "ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
+                return;
+            }
+            zValues[j*xSteps + i] = zCoord;
+            zSafeCoord = zCoord + zSafe;
+            cout << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
+            sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
+        }
+        i++;
+        if (i >= xSteps)
+        {
+            break;
+        }
+        for (int j = ySteps - 1; j >= 0; j--)
+        {
+            cout << "Probing in: " << xValues[i] << " - " << yValues[j] << endl;
+            sendGcodeInternal(QString("G1 X").
+                           append(QString::number(xValues[i])).
+                                  append(" Y").
+                                  append(QString::number(yValues[j])).append(" F300"), res, false, 0);
+            sendGcodeInternal("G30", res, false, 0);
+            if (!probeResultToValue(res, zCoord))
+            {
+                cout << "ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
+                return;
+            }
+            zValues[j*xSteps + i] = zCoord;
+            zSafeCoord = zCoord + zSafe;
+            cout << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
+            sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
+        }
+
+    }
+
+    interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues);
+
 }

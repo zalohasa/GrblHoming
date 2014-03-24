@@ -106,6 +106,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->btnResetGrbl,SIGNAL(clicked()),this,SLOT(grblReset()));
     connect(ui->btnUnlockGrbl,SIGNAL(clicked()),this,SLOT(grblUnlock()));
     connect(ui->btnGoHomeSafe,SIGNAL(clicked()),this,SLOT(goHomeSafe()));
+    connect(ui->btnTestLeveling, SIGNAL(clicked()), this, SLOT(testLeveling()));
     connect(ui->verticalSliderZJog,SIGNAL(valueChanged(int)),this,SLOT(zJogSliderDisplay(int)));
     connect(ui->verticalSliderZJog,SIGNAL(sliderPressed()),this,SLOT(zJogSliderPressed()));
     connect(ui->verticalSliderZJog,SIGNAL(sliderReleased()),this,SLOT(zJogSliderReleased()));
@@ -225,6 +226,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->btnResetGrbl->setEnabled(false);
     ui->btnUnlockGrbl->setEnabled(false);
     ui->btnGoHomeSafe->setEnabled(false);
+
     styleSheet = ui->btnOpenPort->styleSheet();
     ui->statusList->setEnabled(true);
     ui->openFile->setEnabled(true);
@@ -282,6 +284,7 @@ void MainWindow::createGcodeConnects()
     connect(this, SIGNAL(sendGrblReset()), gcode, SLOT(sendControllerReset()));
     connect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     connect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
+    connect(this, SIGNAL(doTestLeveling(QRect, int, int, double)), gcode, SLOT(performZLeveling(QRect,int,int,double)));
 
     connect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     connect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -323,6 +326,7 @@ void MainWindow::deleteGcodeConnects()
     disconnect(this, SIGNAL(sendGrblReset()), gcode, SLOT(sendControllerReset()));
     disconnect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     disconnect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
+    disconnect(this, SIGNAL(doTestLeveling(QRect, int, int, double)), gcode, SLOT(performZLeveling(QRect,int,int,double)));
 
     disconnect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     disconnect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -436,6 +440,12 @@ void MainWindow::grblUnlock()
 void MainWindow::goHomeSafe()
 {
     emit goToHome();
+}
+
+void MainWindow::testLeveling()
+{
+    QRect ext(0, 0, 101, 101);
+    emit doTestLeveling(ext, 3, 3, 1.5d);
 }
 
 // slot called from GCode class to update our state

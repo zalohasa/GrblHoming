@@ -11,6 +11,7 @@
 #include "rs232.h"
 #include "coord3d.h"
 #include "controlparams.h"
+#include "SpilineInterpolate3D.h"
 
 #define BUF_SIZE 300
 
@@ -71,6 +72,7 @@ public slots:
     void controllerSetHome();
     void sendControllerReset();
     void sendControllerUnlock();
+    void performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe);
     void goToHome();
 
 protected:
@@ -101,6 +103,8 @@ private:
     bool checkMarlin(const QString& result);
     void computeCoordinates(const QString& command);
 
+    bool probeResultToValue(const QString & result, double &zCoord);
+
 private:
 
 
@@ -121,6 +125,8 @@ private:
     int sliderZCount;
     QStringList grblCmdErrors;
     QStringList grblFilteredCmds;
+
+    SpilineInterpolate3D * interpolator;
 
     float lastExplicitFeed;
     bool manualFeedSetted;

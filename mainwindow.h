@@ -37,6 +37,7 @@
 #define TAB_AXIS_INDEX          0
 #define TAB_VISUALIZER_INDEX    1
 #define TAB_ADVANCED_INDEX      2
+#define TAB_Z_LEVELING_INDEX    3
 
 #define CENTER_POS              40
 
@@ -111,6 +112,7 @@ signals:
     void sendGrblUnlock();
     void goToHome();
     void setItems(QList<PosItem>);
+    void doTestLeveling(QRect rect, int xSteps, int ySteps, double zHeight);
 
 private slots:
     //buttons
@@ -165,6 +167,7 @@ private slots:
     void statusSliderPressed();
     void statusSliderReleased();
     void setQueuedCommands(int commandCount, bool running);
+    void testLeveling();
 
 private:
     // enums

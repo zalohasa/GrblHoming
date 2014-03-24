@@ -1891,3 +1891,10 @@ int GCodeGrbl::getNumaxis()
 {
 	return numaxis;
 }
+
+void GCodeGrbl::performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe)
+{
+    QString msg("Grbl gcode implementation does not support ZLeveling yet");
+    emit addList(msg);
+    emit sendMsg(msg);
+}

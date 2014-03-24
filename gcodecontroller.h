@@ -87,6 +87,7 @@ public slots:
     virtual void controllerSetHome() = 0;
     virtual void sendControllerReset() = 0;
     virtual void sendControllerUnlock() = 0;
+    virtual void performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe) = 0;
     virtual void goToHome() = 0;
 
 protected:
