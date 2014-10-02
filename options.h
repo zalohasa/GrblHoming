@@ -22,7 +22,8 @@
 #define SETTINGS_CONTROLLER_MARLIN          1
 
 #define SETTINGS_CONTROLLER                 "controller"
-#define SETTINGS_INVERSE_C                  "inverse.c"
+//#define SETTINGS_INVERSE_C                  "inverse.c"
+#define SETTINGS_INVERSE_FOURTH             "inverse.c"// leave as 'c' for backwards compat
 #define SETTINGS_INVERSE_X                  "inverse.x"
 #define SETTINGS_INVERSE_Y                  "inverse.y"
 #define SETTINGS_INVERSE_Z                  "inverse.z"
@@ -30,12 +31,14 @@
 #define SETTINGS_Z_JOG_RATE                 "zJogRate"
 #define SETTINGS_ENABLE_DEBUG_LOG           "debugLog"
 #define SETTINGS_USE_AGGRESSIVE_PRELOAD     "aggressivePreload"
+#define SETTINGS_WAIT_FOR_JOG_TO_COMPLETE   "waitForJogToComplete"
 #define SETTINGS_USE_MM_FOR_MANUAL_CMDS     "useMMForManualCommands"
 #define SETTINGS_ABSOLUTE_AFTER_AXIS_ADJ    "absCoordForManualAfterAxisAdj"
 #define SETTINGS_Z_RATE_LIMIT               "zRateLimit"
 #define SETTINGS_Z_RATE_LIMIT_AMOUNT        "zRateLimitAmount"
 #define SETTINGS_XY_RATE_AMOUNT             "xyRateAmount"
-#define SETTINGS_FOUR_AXIS                  "fourAxis"
+#define SETTINGS_FOUR_AXIS_USE              "fourAxis"
+#define SETTINGS_FOUR_AXIS_TYPE             "fourAxisType"
 
 #define SETTINGS_FILE_OPEN_DIALOG_STATE     "fileopendialogstate"
 #define SETTINGS_NAME_FILTER                "namefilter"
@@ -49,6 +52,11 @@
 #define SETTINGS_REDUCE_PREC_FOR_LONG_LINES "reducePrecisionForLongLines"
 #define SETTINGS_GRBL_LINE_BUFFER_LEN       "grblLineBufferLen"
 #define SETTINGS_CHAR_SEND_DELAY_MS         "charSendDelayMs"
+#define SETTINGS_JOG_STEP                   "jogStep"
+
+#define SETTINGS_ENABLE_POS_REQ             "positionRequest"
+#define SETTINGS_TYPE_POS_REQ               "posRequestType"
+#define SETTINGS_POS_REQ_FREQ_SEC           "posReqFreqSec"
 
 
 namespace Ui {
@@ -73,7 +81,11 @@ private slots:
     void toggleLimitZRate(bool limitZ);
     void toggleFourAxis(bool four);
     void controllerChanged(int index);
+    void togglePosReporting(bool usePosReporting);
 
+private:
+    char getFourthAxisType();
+    QString getPosReqType();
 private:
     Ui::Options *ui;
     //variables

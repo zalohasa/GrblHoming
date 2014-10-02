@@ -74,6 +74,8 @@ signals:
     void setUnitsMachine(QString value);
     void setLivePoint(double x, double y, bool isMM);
     void setVisCurrLine(int currLine);
+    void setLcdState(bool valid);
+    void setVisualLivenessCurrPos(bool isLiveCP);
 
 public slots:
     virtual void openPort(QString commPortStr, QString baudRate) = 0;
@@ -81,7 +83,7 @@ public slots:
     virtual void sendGcode(QString line) = 0;
     virtual void sendGcodeAndGetResult(int id, QString line) = 0;
     virtual void sendFile(QString path) = 0;
-    virtual void gotoXYZC(QString line) = 0;
+    virtual void gotoXYZFourth(QString line) = 0;
     virtual void axisAdj(char axis, float coord, bool inv, bool absoluteAfterAxisAdj, int sliderZCount) = 0;
     virtual void setResponseWait(ControlParams controlParams) = 0;
     virtual void controllerSetHome() = 0;
@@ -91,6 +93,13 @@ public slots:
     virtual void goToHome() = 0;
 
 protected:
+    enum PosReqStatus
+    {
+        POS_REQ_RESULT_OK,
+        POS_REQ_RESULT_ERROR,
+        POS_REQ_RESULT_TIMER_SKIP,
+        POS_REQ_RESULT_UNAVAILABLE
+    };
     virtual QString removeUnsupportedCommands(QString line) = 0;
     bool isPortOpen();
     AtomicIntBool abortState;

@@ -60,13 +60,15 @@ signals:
     void setUnitsMachine(QString value);
     void setLivePoint(double x, double y, bool isMM);
     void setVisCurrLine(int currLine);
+    void setLcdState(bool valid);
+    void setVisualLivenessCurrPos(bool isLiveCP);
 
 public slots:
     void openPort(QString commPortStr, QString baudRate);
     void sendGcode(QString line);
     void sendGcodeAndGetResult(int id, QString line);
     void sendFile(QString path);
-    void gotoXYZC(QString line);
+    void gotoXYZFourth(QString line);
     void axisAdj(char axis, float coord, bool inv, bool absoluteAfterAxisAdj, int sliderZCount);
     void setResponseWait(ControlParams controlParams);
     void controllerSetHome();

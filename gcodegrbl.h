@@ -67,15 +67,17 @@ signals:
     void setLastState(QString state);
     void setUnitsWork(QString value);
     void setUnitsMachine(QString value);
-    void setLivePoint(double x, double y, bool isMM);
+    void setLivePoint(double x, double y, bool isMM, bool isLiveCP);
     void setVisCurrLine(int currLine);
+    void setLcdState(bool valid);
+    void setVisualLivenessCurrPos(bool isLiveCP);
 
 public slots:
     void openPort(QString commPortStr, QString baudRate);
     void sendGcode(QString line);
     void sendGcodeAndGetResult(int id, QString line);
     void sendFile(QString path);
-    void gotoXYZC(QString line);
+    void gotoXYZFourth(QString line);
     void axisAdj(char axis, float coord, bool inv, bool absoluteAfterAxisAdj, int sliderZCount);
     void setResponseWait(ControlParams controlParams);
     void controllerSetHome();
@@ -110,6 +112,9 @@ private:
     void sendStatusList(QStringList& listToSend);
     void clearToHome();
     bool checkGrbl(const QString& result);
+    PosReqStatus positionUpdate(bool forceIfEnabled = false);
+    bool checkForGetPosStr(QString& line);
+    void setLivenessState(bool valid);
 
 private:
 
@@ -131,6 +136,8 @@ private:
     int sliderZCount;
     QStringList grblCmdErrors;
     QStringList grblFilteredCmds;
+    QTime pollPosTimer;
+    bool positionValid;
 
     int sentI;
     int rcvdI;

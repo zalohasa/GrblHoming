@@ -391,7 +391,7 @@
        <number>2</number>
       </property>
       <item>
-       <layout class="QGridLayout" name="gridLayout_4">
+       <layout class="QGridLayout" name="gridLayout_CoodPositions">
         <property name="sizeConstraint">
          <enum>QLayout::SetDefaultConstraint</enum>
         </property>
@@ -952,7 +952,7 @@
          </widget>
         </item>
         <item row="4" column="0">
-         <widget class="QLabel" name="lblC">
+         <widget class="QLabel" name="lblFourth">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
             <horstretch>0</horstretch>
@@ -985,7 +985,7 @@
          </widget>
         </item>
         <item row="4" column="2">
-         <widget class="QLCDNumber" name="lcdWorkNumberC">
+         <widget class="QLCDNumber" name="lcdWorkNumberFourth">
           <property name="maximumSize">
            <size>
             <width>16777215</width>
@@ -1051,7 +1051,7 @@
          </widget>
         </item>
         <item row="4" column="1">
-         <widget class="QLCDNumber" name="lcdMachNumberC">
+         <widget class="QLCDNumber" name="lcdMachNumberFourth">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
             <horstretch>0</horstretch>
@@ -1195,7 +1195,7 @@
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/left.PNG</normaloff>:/img/left.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1212,7 +1212,7 @@
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/up.PNG</normaloff>:/img/up.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1229,7 +1229,7 @@
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/down.PNG</normaloff>:/img/down.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1259,7 +1259,7 @@
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/right.PNG</normaloff>:/img/right.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1273,7 +1273,7 @@
               <item row="5" column="1">
                <layout class="QHBoxLayout" name="horizontalLayout_5">
                 <item>
-                 <widget class="QLabel" name="lblCJog">
+                 <widget class="QLabel" name="lblFourthJog">
                   <property name="font">
                    <font>
                     <pointsize>10</pointsize>
@@ -1292,12 +1292,12 @@
                </layout>
               </item>
               <item row="5" column="0">
-               <widget class="QPushButton" name="DecCBtn">
+               <widget class="QPushButton" name="DecFourthBtn">
                 <property name="text">
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/left.PNG</normaloff>:/img/left.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1309,12 +1309,12 @@
                </widget>
               </item>
               <item row="5" column="2">
-               <widget class="QPushButton" name="IncCBtn">
+               <widget class="QPushButton" name="IncFourthBtn">
                 <property name="text">
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/right.PNG</normaloff>:/img/right.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1409,7 +1409,7 @@
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/up.PNG</normaloff>:/img/up.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1443,7 +1443,7 @@
                  <string/>
                 </property>
                 <property name="icon">
-                 <iconset>
+                 <iconset resource="GrblController.qrc">
                   <normaloff>:/img/down.PNG</normaloff>:/img/down.PNG</iconset>
                 </property>
                 <property name="iconSize">
@@ -1795,6 +1795,13 @@
          </widget>
         </item>
         <item>
+         <widget class="QPushButton" name="pushButtonRefreshPos">
+          <property name="text">
+           <string>Refresh Pos</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <spacer name="horizontalSpacer_2">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
@@ -1870,6 +1877,8 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="GrblController.qrc"/>
+ </resources>
  <connections/>
 </ui>

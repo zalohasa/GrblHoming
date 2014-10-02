@@ -17,10 +17,13 @@ GCodeGrbl::GCodeGrbl()
       incorrectMeasurementUnits(false), incorrectLcdDisplayUnits(false),
       maxZ(0), motionOccurred(false),
       sliderZCount(0),
+      positionValid(false),
       numaxis(DEFAULT_AXIS_COUNT)
 {
     // use base class's timer - use it to capture random text from the controller
     startTimer(1000);
+    // for position polling
+    pollPosTimer.start();
 }
 
 void GCodeGrbl::openPort(QString commPortStr, QString baudRate)
@@ -75,9 +78,9 @@ void GCodeGrbl::controllerSetHome()
     clearToHome();
 
     if (numaxis == MAX_AXIS_COUNT)
-		gotoXYZC("G92 x0 y0 z0 c0");
+        gotoXYZFourth(QString("G92 x0 y0 z0 ").append(QString(controlParams.fourthAxisType)).append("0"));
 	else
-		gotoXYZC("G92 x0 y0 z0");
+        gotoXYZFourth("G92 x0 y0 z0");
 }
 
 void GCodeGrbl::goToHome()
@@ -99,12 +102,12 @@ void GCodeGrbl::goToHome()
 
     QString zpos = QString::number(maxZOver);
 
-    gotoXYZC(QString("G0 z").append(zpos));
+    gotoXYZFourth(QString("G0 z").append(zpos));
 
     if (numaxis == MAX_AXIS_COUNT)
-		gotoXYZC("G1 x0 y0 z0 c0");
+        gotoXYZFourth(QString("G1 x0 y0 z0 ").append(QString(controlParams.fourthAxisType)).append("0"));
 	else
-		gotoXYZC("G1 x0 y0 z0");
+        gotoXYZFourth("G1 x0 y0 z0");
 
     maxZ -= maxZOver;
 
@@ -166,46 +169,61 @@ void GCodeGrbl::sendGcode(QString line)
 // keep polling our position and state until we are done running
 void GCodeGrbl::pollPosWaitForIdle(bool checkMeasurementUnits)
 {
-    bool immediateQuit = false;
-    for (int i = 0; i < 10000; i++)
+    if (controlParams.usePositionRequest
+            && (controlParams.positionRequestType == PREQ_ALWAYS_NO_IDLE_CHK
+                    || controlParams.positionRequestType == PREQ_ALWAYS
+                    || checkMeasurementUnits))
     {
-        bool ret = sendGcodeLocal(REQUEST_CURRENT_POS);
-        if (!ret)
+        bool immediateQuit = false;
+        for (int i = 0; i < 10000; i++)
         {
-            immediateQuit = true;
-            break;
-        }
-
-        if (doubleDollarFormat)
-        {
-            if (lastState.compare("Run") != 0)
-                break;
-        }
-        else
-        {
-            if (machineCoordLastIdlePos == machineCoord
-                && workCoordLastIdlePos == workCoord)
+            GCodeController::PosReqStatus ret = positionUpdate();
+            if (ret == POS_REQ_RESULT_ERROR || ret == POS_REQ_RESULT_UNAVAILABLE)
             {
+                immediateQuit = true;
                 break;
             }
+            else if (ret == POS_REQ_RESULT_TIMER_SKIP)
+            {
+                SLEEP(250);
+                continue;
+            }
 
-            machineCoordLastIdlePos = machineCoord;
-            workCoordLastIdlePos = workCoord;
+            if (doubleDollarFormat)
+            {
+                if (lastState.compare("Run") != 0)
+                    break;
+            }
+            else
+            {
+                if (machineCoordLastIdlePos == machineCoord
+                    && workCoordLastIdlePos == workCoord)
+                {
+                    break;
+                }
+
+                machineCoordLastIdlePos = machineCoord;
+                workCoordLastIdlePos = workCoord;
+            }
+
+            if (shutdownState.get())
+                return;
         }
 
-        if (shutdownState.get())
+        if (immediateQuit)
             return;
+
+        if (checkMeasurementUnits)
+        {
+            if (doubleDollarFormat)
+                checkAndSetCorrectMeasurementUnits();
+            else
+                setOldFormatMeasurementUnitControl();
+        }
     }
-
-    if (immediateQuit)
-        return;
-
-    if (checkMeasurementUnits)
+    else
     {
-        if (doubleDollarFormat)
-            checkAndSetCorrectMeasurementUnits();
-        else
-            setOldFormatMeasurementUnitControl();
+        setLivenessState(false);
     }
 }
 
@@ -311,9 +329,10 @@ bool GCodeGrbl::sendGcodeInternal(QString line, QString& result, bool recordResp
     bool sentReqForSettings = false;
     bool sentReqForParserState = false;
 
-    if (!line.compare(REQUEST_CURRENT_POS))
+    if (checkForGetPosStr(line))
     {
         sentReqForLocation = true;
+        setLivenessState(true);
     }
     else if (!line.compare(REQUEST_PARSER_STATE_V08c))
     {
@@ -518,8 +537,8 @@ bool GCodeGrbl::waitForOk(QString& result, int waitSec, bool sentReqForLocation,
                     else
                     {
                         CmdResponse cmdResp = sendCount.takeFirst();
-                        diag(qPrintable(tr("GOT[%d]:%s for %s\n")), cmdResp.line, tmpTrim.toLocal8Bit().constData(), cmdResp.cmd.toLocal8Bit().constData());
-                        
+                        diag(qPrintable(tr("GOT[%d]: '%s' for '%s' (aggressive)\n")), cmdResp.line,
+                             tmpTrim.toLocal8Bit().constData(), cmdResp.cmd.trimmed().toLocal8Bit().constData());
 						//diag("DG Buffer %d", sendCount.size());
                         
 						emit setQueuedCommands(sendCount.size(), true);
@@ -536,8 +555,8 @@ bool GCodeGrbl::waitForOk(QString& result, int waitSec, bool sentReqForLocation,
                     {
                         CmdResponse cmdResp = sendCount.takeFirst();
                         orig = cmdResp.cmd;
-                        diag(qPrintable(tr("GOT[%d]:%s for %s\n")), cmdResp.line, tmpTrim.toLocal8Bit().constData(), orig.toLocal8Bit().constData());
-                        
+                        diag(qPrintable(tr("GOT[%d]: '%s' for '%s' (aggressive)\n")), cmdResp.line,
+                             tmpTrim.toLocal8Bit().constData(), cmdResp.cmd.trimmed().toLocal8Bit().constData());
 						//diag("DG Buffer %d", sendCount.size());
                         
                         emit setQueuedCommands(sendCount.size(), true);
@@ -551,7 +570,7 @@ bool GCodeGrbl::waitForOk(QString& result, int waitSec, bool sentReqForLocation,
                 }
                 else
                 {
-                    diag(qPrintable(tr("GOT:%s\n")), tmpTrim.toLocal8Bit().constData());
+                    diag(qPrintable(tr("GOT: '%s' (aggressive)\n")), tmpTrim.trimmed().toLocal8Bit().constData());
                     parseCoordinates(received, aggressive);
                 }
 
@@ -882,13 +901,13 @@ void GCodeGrbl::parseCoordinates(const QString& received, bool aggressive)
 		machineCoord.y = list.at(index++).toFloat();
 		machineCoord.z = list.at(index++).toFloat();
         if (numaxis == MAX_AXIS_COUNT)
-			machineCoord.c = list.at(index++).toFloat();
+            machineCoord.fourth = list.at(index++).toFloat();
 		list = rxWPos.capturedTexts();
 		workCoord.x = list.at(1).toFloat();
 		workCoord.y = list.at(2).toFloat();
 		workCoord.z = list.at(3).toFloat();
         if (numaxis == MAX_AXIS_COUNT)
-			workCoord.c = list.at(4).toFloat();
+            workCoord.fourth = list.at(4).toFloat();
 		if (state != "Run")
 			workCoord.stoppedZ = true;
 		else
@@ -904,15 +923,15 @@ void GCodeGrbl::parseCoordinates(const QString& received, bool aggressive)
         else if (numaxis == MAX_AXIS_COUNT)
 			diag(qPrintable(tr("Decoded: State:%s MPos: %f,%f,%f,%f WPos: %f,%f,%f,%f\n")),
 				 qPrintable(state),
-				 machineCoord.x, machineCoord.y, machineCoord.z, machineCoord.c,
-				 workCoord.x, workCoord.y, workCoord.z, workCoord.c
+                 machineCoord.x, machineCoord.y, machineCoord.z, machineCoord.fourth,
+                 workCoord.x, workCoord.y, workCoord.z, workCoord.fourth
 				 );
 
 		if (workCoord.z > maxZ)
 			maxZ = workCoord.z;
 
 		emit updateCoordinates(machineCoord, workCoord);
-		emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
+        emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm, positionValid);
 		emit setLastState(state);
 
 		lastState = state;
@@ -938,9 +957,11 @@ void GCodeGrbl::sendStatusList(QStringList& listToSend)
 }
 
 // called once a second to capture any random strings that come from the controller
-#pragma GCC diagnostic ignored "-Wunused-parameter" push
+
 void GCodeGrbl::timerEvent(QTimerEvent *event)
 {
+    Q_UNUSED(event);
+
     if (port.isPortOpen())
     {
         char tmp[BUF_SIZE + 1] = {0};
@@ -973,7 +994,6 @@ void GCodeGrbl::timerEvent(QTimerEvent *event)
         sendStatusList(listToSend);
     }
 }
-#pragma GCC diagnostic ignored "-Wunused-parameter" pop
 
 void GCodeGrbl::sendFile(QString path)
 {
@@ -1021,9 +1041,6 @@ void GCodeGrbl::sendFile(QString path)
         emit resetTimer(true);
 
         parseCoordTimer.restart();
-
-        QTime pollPosTimer;
-        pollPosTimer.start();
 
         int currLine = 0;
         bool xyRateSet = false;
@@ -1102,19 +1119,7 @@ void GCodeGrbl::sendFile(QString path)
             float percentComplete = (currLine * 100.0) / totalLineCount;
             setProgress((int)percentComplete);
 
-            if (!aggressive)
-            {
-                sendGcodeLocal(REQUEST_CURRENT_POS);
-            }
-            else
-            {
-                int ms = pollPosTimer.elapsed();
-                if (ms >= 1000)
-                {
-                    pollPosTimer.restart();
-                    sendGcodeLocal(REQUEST_CURRENT_POS, false, -1, aggressive);
-                }
-            }
+            positionUpdate();
             currLine++;
         } while ((code.atEnd() == false) && (!abortState.get()));
         file.close();
@@ -1143,7 +1148,7 @@ void GCodeGrbl::sendFile(QString path)
             }
         }
 
-        sendGcodeLocal(REQUEST_CURRENT_POS);
+        positionUpdate();
 
         emit resetTimer(false);
 
@@ -1298,7 +1303,7 @@ QString GCodeGrbl::reducePrecision(QString line)
     if (pos >= 0)
         result = result.left(pos);
 
-    int charsToRemove = result.length() - controlParams.grblLineBufferLen;
+    int charsToRemove = result.length() - (controlParams.grblLineBufferLen - 1);// subtract 1 to account for linefeed sent with command later
 
     if (charsToRemove > 0)
     {
@@ -1640,7 +1645,7 @@ QStringList GCodeGrbl::doZRateLimit(QString inputLine, QString& msg, bool& xyRat
                 gotF = true;
             }
             else
-			if (s.at(0) == 'X' || s.at(0) == 'Y' || s.at(0) == 'C')
+            if (s.at(0) == 'X' || s.at(0) == 'Y' || s.at(0) == 'A' || s.at(0) == 'B' || s.at(0) == 'C')
             {
                 addRateXY = true;
             }
@@ -1671,9 +1676,12 @@ QStringList GCodeGrbl::doZRateLimit(QString inputLine, QString& msg, bool& xyRat
 
 }
 
-void GCodeGrbl::gotoXYZC(QString line)
+void GCodeGrbl::gotoXYZFourth(QString line)
 {
-    pollPosWaitForIdle(false);
+    bool queryPos = checkForGetPosStr(line);
+    if (!queryPos && controlParams.usePositionRequest
+            && controlParams.positionRequestType == PREQ_ALWAYS)
+        pollPosWaitForIdle(false);
 
     if (sendGcodeLocal(line))
     {
@@ -1693,7 +1701,7 @@ void GCodeGrbl::gotoXYZC(QString line)
             item = getMoveAmountFromString("Z", list.at(i));
             moveDetected = item.length() > 0 ;
             if (numaxis == MAX_AXIS_COUNT)  {
-				item = getMoveAmountFromString("C", list.at(i));
+                item = getMoveAmountFromString(QString(controlParams.fourthAxisType), list.at(i));
 				moveDetected = item.length() > 0;
 			}
         }
@@ -1703,7 +1711,8 @@ void GCodeGrbl::gotoXYZC(QString line)
             //emit addList("No movement expected for command.");
         }
 
-        pollPosWaitForIdle(false);
+        if (!queryPos)
+            pollPosWaitForIdle(false);
     }
     else
     {
@@ -1729,7 +1738,7 @@ void GCodeGrbl::axisAdj(char axis, float coord, bool inv, bool absoluteAfterAxis
 {
     if (inv)
     {
-        coord =- coord;
+        coord = (-coord);
     }
 
     QString cmd = QString("G01 ").append(axis)
@@ -1820,7 +1829,7 @@ void GCodeGrbl::checkAndSetCorrectMeasurementUnits()
             setConfigureInchesMode(true);
         }
         incorrectMeasurementUnits = false;// hope this is ok to do here
-        sendGcodeLocal(REQUEST_CURRENT_POS);
+        positionUpdate(true);
     }
     else
     {
@@ -1856,7 +1865,7 @@ void GCodeGrbl::setConfigureMmMode(bool setGrblUnits)
     sendGcodeLocal("$13=0");
     if (setGrblUnits)
         sendGcodeLocal("G21");
-    sendGcodeLocal(REQUEST_CURRENT_POS);
+    positionUpdate(true);
 }
 
 void GCodeGrbl::setConfigureInchesMode(bool setGrblUnits)
@@ -1864,7 +1873,7 @@ void GCodeGrbl::setConfigureInchesMode(bool setGrblUnits)
     sendGcodeLocal("$13=1");
     if (setGrblUnits)
         sendGcodeLocal("G20");
-    sendGcodeLocal(REQUEST_CURRENT_POS);
+    positionUpdate(true);
 }
 
 void GCodeGrbl::setUnitsTypeDisplay(bool millimeters)
@@ -1897,4 +1906,42 @@ void GCodeGrbl::performZLeveling(QRect extent, int xSteps, int ySteps, double zS
     QString msg("Grbl gcode implementation does not support ZLeveling yet");
     emit addList(msg);
     emit sendMsg(msg);
+}
+
+GCodeGrbl::PosReqStatus GCodeGrbl::positionUpdate(bool forceIfEnabled /* = false */)
+{
+    if (controlParams.usePositionRequest)
+    {
+        if (forceIfEnabled)
+        {
+            return sendGcodeLocal(REQUEST_CURRENT_POS) ? POS_REQ_RESULT_OK : POS_REQ_RESULT_ERROR;
+        }
+        else
+        {
+            int ms = pollPosTimer.elapsed();
+            if (ms >= controlParams.postionRequestTimeMilliSec)
+            {
+                pollPosTimer.restart();
+                return sendGcodeLocal(REQUEST_CURRENT_POS) ? POS_REQ_RESULT_OK : POS_REQ_RESULT_ERROR;
+            }
+            else
+            {
+                return POS_REQ_RESULT_TIMER_SKIP;
+            }
+        }
+    }
+    return POS_REQ_RESULT_UNAVAILABLE;
+}
+
+bool GCodeGrbl::checkForGetPosStr(QString& line)
+{
+    return (!line.compare(REQUEST_CURRENT_POS)
+        || (line.startsWith(REQUEST_CURRENT_POS) && line.endsWith('\r') && line.length() == 2));
+}
+
+void GCodeGrbl::setLivenessState(bool valid)
+{
+    positionValid = valid;
+    emit setVisualLivenessCurrPos(valid);
+    emit setLcdState(valid);
 }

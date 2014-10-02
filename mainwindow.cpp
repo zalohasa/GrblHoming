@@ -29,8 +29,13 @@ MainWindow::MainWindow(QWidget *parent) :
     sliderTo(0.0),
     sliderZCount(0),
     scrollRequireMove(true), scrollPressed(false),
-    queuedCommandsStarved(false), lastQueueCount(0), queuedCommandState(QCS_OK),gcode(NULL),
-    currentController(-1)
+//<<<<<<< HEAD
+    queuedCommandsStarved(false), lastQueueCount(0), queuedCommandState(QCS_OK), gcode(NULL),
+    currentController(-1),
+//=======
+    //queuedCommandsStarved(false), lastQueueCount(0), queuedCommandState(QCS_OK),
+    lastLcdStateValid(true)
+//>>>>>>> master
 {
     // Setup our application information to be used by QSettings
     QCoreApplication::setOrganizationName(COMPANY_NAME);
@@ -66,20 +71,20 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->lcdMachNumberY->setDigitCount(8);
     ui->lcdWorkNumberZ->setDigitCount(8);
     ui->lcdMachNumberZ->setDigitCount(8);
-	ui->lcdWorkNumberC->setDigitCount(8);
-    ui->lcdMachNumberC->setDigitCount(8);
+    ui->lcdWorkNumberFourth->setDigitCount(8);
+    ui->lcdMachNumberFourth->setDigitCount(8);
 
     if (!controlParams.useFourAxis)
     {
-        ui->DecCBtn->hide();
-        ui->IncCBtn->hide();
-        ui->lblCJog->hide();
-        ui->lcdWorkNumberC->hide();
-        ui->lcdWorkNumberC->setAttribute(Qt::WA_DontShowOnScreen, true);
-        ui->lcdMachNumberC->hide();
-        ui->lcdMachNumberC->setAttribute(Qt::WA_DontShowOnScreen, true);
-        ui->lblC->hide();
-        ui->lblC->setAttribute(Qt::WA_DontShowOnScreen, true);
+        ui->DecFourthBtn->hide();
+        ui->IncFourthBtn->hide();
+        ui->lblFourthJog->hide();
+        ui->lcdWorkNumberFourth->hide();
+        ui->lcdWorkNumberFourth->setAttribute(Qt::WA_DontShowOnScreen, true);
+        ui->lcdMachNumberFourth->hide();
+        ui->lcdMachNumberFourth->setAttribute(Qt::WA_DontShowOnScreen, true);
+        ui->lblFourth->hide();
+        ui->lblFourth->setAttribute(Qt::WA_DontShowOnScreen, true);
     }
 
     //buttons
@@ -91,10 +96,10 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->IncXBtn,SIGNAL(clicked()),this,SLOT(incX()));
     connect(ui->IncYBtn,SIGNAL(clicked()),this,SLOT(incY()));
     connect(ui->IncZBtn,SIGNAL(clicked()),this,SLOT(incZ()));
-	connect(ui->DecCBtn,SIGNAL(clicked()),this,SLOT(decC()));
-    connect(ui->IncCBtn,SIGNAL(clicked()),this,SLOT(incC()));
+    connect(ui->DecFourthBtn,SIGNAL(clicked()),this,SLOT(decFourth()));
+    connect(ui->IncFourthBtn,SIGNAL(clicked()),this,SLOT(incFourth()));
     connect(ui->btnSetHome,SIGNAL(clicked()),this,SLOT(setHome()));
-    connect(ui->comboCommand->lineEdit(),SIGNAL(editingFinished()),this,SLOT(gotoXYZC()));
+    connect(ui->comboCommand->lineEdit(),SIGNAL(editingFinished()),this,SLOT(gotoXYZFourth()));
     connect(ui->Begin,SIGNAL(clicked()),this,SLOT(begin()));
     connect(ui->openFile,SIGNAL(clicked()),this,SLOT(openFile()));
     connect(ui->Stop,SIGNAL(clicked()),this,SLOT(stop()));
@@ -110,11 +115,9 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->verticalSliderZJog,SIGNAL(valueChanged(int)),this,SLOT(zJogSliderDisplay(int)));
     connect(ui->verticalSliderZJog,SIGNAL(sliderPressed()),this,SLOT(zJogSliderPressed()));
     connect(ui->verticalSliderZJog,SIGNAL(sliderReleased()),this,SLOT(zJogSliderReleased()));
-
-
+    connect(ui->pushButtonRefreshPos,SIGNAL(clicked()),this,SLOT(refreshPosition()));
+    connect(ui->comboStep,SIGNAL(currentIndexChanged(QString)),this,SLOT(comboStepChanged(QString)));
     connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
-    
-
 
     connect(&runtimeTimer, SIGNAL(setRuntime(QString)), ui->outputRuntime, SLOT(setText(QString)));
 
@@ -130,13 +133,6 @@ MainWindow::MainWindow(QWidget *parent) :
 
     runtimeTimerThread.start();
     gcodeThread.start();
-
-    ui->comboStep->addItem("0.01");
-    ui->comboStep->addItem("0.1");
-    ui->comboStep->addItem("1");
-    ui->comboStep->addItem("10");
-	ui->comboStep->addItem("100");
-    ui->comboStep->setCurrentIndex(3);
 
 	// Don't use - it will not show horizontal scrollbar for small app size
     //ui->statusList->setUniformItemSizes(true);
@@ -202,11 +198,11 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->tabAxisVisualizer->setEnabled(false);
     if (!controlParams.useFourAxis)
     {
-        ui->lcdWorkNumberC->setEnabled(false);;
-        ui->lcdMachNumberC->setEnabled(false);;
-        ui->IncCBtn->setEnabled(false);
-        ui->DecCBtn->setEnabled(false);
-        ui->lblCJog->setEnabled(false);
+        ui->lcdWorkNumberFourth->setEnabled(false);;
+        ui->lcdMachNumberFourth->setEnabled(false);;
+        ui->IncFourthBtn->setEnabled(false);
+        ui->DecFourthBtn->setEnabled(false);
+        ui->lblFourthJog->setEnabled(false);
     }
     ui->groupBoxSendFile->setEnabled(true);
     ui->comboCommand->setEnabled(false);
@@ -226,6 +222,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->btnResetGrbl->setEnabled(false);
     ui->btnUnlockGrbl->setEnabled(false);
     ui->btnGoHomeSafe->setEnabled(false);
+    ui->pushButtonRefreshPos->setEnabled(false);
 
     styleSheet = ui->btnOpenPort->styleSheet();
     ui->statusList->setEnabled(true);
@@ -273,7 +270,7 @@ void MainWindow::createGcodeConnects()
     connect(this, SIGNAL(openPort(QString,QString)), gcode, SLOT(openPort(QString,QString)));
     connect(this, SIGNAL(closePort(bool)), gcode, SLOT(closePort(bool)));
     connect(this, SIGNAL(sendGcode(QString)), gcode, SLOT(sendGcode(QString)));
-    connect(this, SIGNAL(gotoXYZC(QString)), gcode, SLOT(gotoXYZC(QString)));
+    connect(this, SIGNAL(gotoXYZFourth(QString)), gcode, SLOT(gotoXYZFourth(QString)));
     connect(this, SIGNAL(axisAdj(char, float, bool, bool, int)), gcode, SLOT(axisAdj(char, float, bool, bool, int)));
     connect(this, SIGNAL(setResponseWait(ControlParams)), gcode, SLOT(setResponseWait(ControlParams)));
     connect(this, SIGNAL(shutdown()), &gcodeThread, SLOT(quit()));
@@ -285,6 +282,7 @@ void MainWindow::createGcodeConnects()
     connect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     connect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
     connect(this, SIGNAL(doTestLeveling(QRect, int, int, double)), gcode, SLOT(performZLeveling(QRect,int,int,double)));
+    connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
 
     connect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     connect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -304,7 +302,9 @@ void MainWindow::createGcodeConnects()
     connect(gcode, SIGNAL(setUnitsWork(QString)), ui->outputUnitsWork, SLOT(setText(QString)));
     connect(gcode, SIGNAL(setUnitsMachine(QString)), ui->outputUnitsMachine, SLOT(setText(QString)));
     connect(gcode, SIGNAL(setLivePoint(double, double, bool)), ui->wgtVisualizer, SLOT(setLivePoint(double, double, bool)));
+    connect(gcode, SIGNAL(setVisualLivenessCurrPos(bool)), ui->wgtVisualizer, SLOT(setVisualLivenessCurrPos(bool)));
     connect(gcode, SIGNAL(setVisCurrLine(int)), ui->wgtVisualizer, SLOT(setVisCurrLine(int)));
+    connect(gcode, SIGNAL(setLcdState(bool)), this, SLOT(setLcdState(bool)));
 
 }
 
@@ -327,6 +327,7 @@ void MainWindow::deleteGcodeConnects()
     disconnect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     disconnect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
     disconnect(this, SIGNAL(doTestLeveling(QRect, int, int, double)), gcode, SLOT(performZLeveling(QRect,int,int,double)));
+    disconnect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
 
     disconnect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     disconnect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -347,6 +348,8 @@ void MainWindow::deleteGcodeConnects()
     disconnect(gcode, SIGNAL(setUnitsMachine(QString)), ui->outputUnitsMachine, SLOT(setText(QString)));
     disconnect(gcode, SIGNAL(setLivePoint(double, double, bool)), ui->wgtVisualizer, SLOT(setLivePoint(double, double, bool)));
     disconnect(gcode, SIGNAL(setVisCurrLine(int)), ui->wgtVisualizer, SLOT(setVisCurrLine(int)));
+    disconnect(gcode, SIGNAL(setVisualLivenessCurrPos(bool)), ui->wgtVisualizer, SLOT(setVisualLivenessCurrPos(bool)));
+    disconnect(gcode, SIGNAL(setLcdState(bool)), this, SLOT(setLcdState(bool)));
 
 }
 
@@ -379,7 +382,7 @@ void MainWindow::begin()
     resetProgress();
     int ret = QMessageBox::No;
     if((ui->lcdWorkNumberX->value()!=0)||(ui->lcdWorkNumberY->value()!=0)||(ui->lcdWorkNumberZ->value()!=0)
-        || (ui->lcdWorkNumberC->value()!=0))
+        || (ui->lcdWorkNumberFourth->value()!=0))
     {
         QMessageBox msgBox;
         msgBox.setText(tr("Do you want to zero the displayed position before proceeding?"));
@@ -407,6 +410,7 @@ void MainWindow::begin()
         ui->btnUnlockGrbl->setEnabled(false);
         ui->btnSetHome->setEnabled(false);
         ui->btnGoHomeSafe->setEnabled(false);
+        ui->pushButtonRefreshPos->setEnabled(false);
         emit sendFile(ui->filePath->text());
     }
 }
@@ -423,6 +427,7 @@ void MainWindow::stop()
     ui->btnResetGrbl->setEnabled(true);
     ui->btnUnlockGrbl->setEnabled(true);
     ui->btnGoHomeSafe->setEnabled(true);
+    ui->pushButtonRefreshPos->setEnabled(true);
 }
 
 void MainWindow::grblReset()
@@ -452,11 +457,11 @@ void MainWindow::testLeveling()
 void MainWindow::stopSending()
 {
     ui->tabAxisVisualizer->setEnabled(true);
-    ui->lcdWorkNumberC->setEnabled(controlParams.useFourAxis);
-    ui->lcdMachNumberC->setEnabled(controlParams.useFourAxis);
-    ui->IncCBtn->setEnabled(controlParams.useFourAxis);
-    ui->DecCBtn->setEnabled(controlParams.useFourAxis);
-    ui->lblCJog->setEnabled(controlParams.useFourAxis);
+    ui->lcdWorkNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->lcdMachNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->IncFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->DecFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->lblFourthJog->setEnabled(controlParams.useFourAxis);
     ui->comboCommand->setEnabled(true);
     ui->labelCommand->setEnabled(true);
     ui->Begin->setEnabled(true);
@@ -473,6 +478,7 @@ void MainWindow::stopSending()
     ui->btnResetGrbl->setEnabled(true);
     ui->btnUnlockGrbl->setEnabled(true);
     ui->btnGoHomeSafe->setEnabled(true);
+    ui->pushButtonRefreshPos->setEnabled(true);
     ui->openFile->setEnabled(true);
 }
 
@@ -574,6 +580,7 @@ void MainWindow::portIsClosed(bool reopen)
     ui->btnResetGrbl->setEnabled(false);
     ui->btnUnlockGrbl->setEnabled(false);
     ui->btnGoHomeSafe->setEnabled(false);
+    ui->pushButtonRefreshPos->setEnabled(false);
 
     if (reopen)
     {
@@ -614,6 +621,7 @@ void MainWindow::adjustedAxis()
     ui->btnResetGrbl->setEnabled(true);
     ui->btnUnlockGrbl->setEnabled(true);
     ui->btnGoHomeSafe->setEnabled(true);
+    ui->pushButtonRefreshPos->setEnabled(true);
 }
 
 void MainWindow::disableAllButtons()
@@ -635,6 +643,7 @@ void MainWindow::disableAllButtons()
     ui->btnResetGrbl->setEnabled(false);
     ui->btnUnlockGrbl->setEnabled(false);
     ui->btnGoHomeSafe->setEnabled(false);
+    ui->pushButtonRefreshPos->setEnabled(false);
 }
 
 void MainWindow::enableGrblDialogButton()
@@ -646,11 +655,11 @@ void MainWindow::enableGrblDialogButton()
     ui->cmbPort->setEnabled(false);
     ui->comboBoxBaudRate->setEnabled(false);
     ui->tabAxisVisualizer->setEnabled(true);
-    ui->lcdWorkNumberC->setEnabled(controlParams.useFourAxis);
-    ui->lcdMachNumberC->setEnabled(controlParams.useFourAxis);
-    ui->IncCBtn->setEnabled(controlParams.useFourAxis);
-    ui->DecCBtn->setEnabled(controlParams.useFourAxis);
-    ui->lblCJog->setEnabled(controlParams.useFourAxis);
+    ui->lcdWorkNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->lcdMachNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->IncFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->DecFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->lblFourthJog->setEnabled(controlParams.useFourAxis);
     ui->groupBoxSendFile->setEnabled(true);
     ui->comboCommand->setEnabled(true);
     ui->labelCommand->setEnabled(true);
@@ -658,6 +667,7 @@ void MainWindow::enableGrblDialogButton()
     ui->btnResetGrbl->setEnabled(true);
     ui->btnUnlockGrbl->setEnabled(true);
     ui->btnGoHomeSafe->setEnabled(true);
+    ui->pushButtonRefreshPos->setEnabled(true);
 
     if (ui->filePath->text().length() > 0)
     {
@@ -687,57 +697,83 @@ void MainWindow::enableGrblDialogButton()
 
 void MainWindow::incX()
 {
-    float coord = ui->comboStep->currentText().toFloat();
     disableAllButtons();
-    emit axisAdj('X', coord, invX, absoluteAfterAxisAdj, 0);
+    emit axisAdj('X', jogStep, invX, absoluteAfterAxisAdj, 0);
 }
 
 void MainWindow::incY()
 {
-    float coord = ui->comboStep->currentText().toFloat();
     disableAllButtons();
-    emit axisAdj('Y', coord, invY, absoluteAfterAxisAdj, 0);
+    emit axisAdj('Y', jogStep, invY, absoluteAfterAxisAdj, 0);
 }
 
 void MainWindow::incZ()
 {
-    float coord = ui->comboStep->currentText().toFloat();
     disableAllButtons();
-    emit axisAdj('Z', coord, invZ, absoluteAfterAxisAdj, sliderZCount++);
+    emit axisAdj('Z', jogStep, invZ, absoluteAfterAxisAdj, sliderZCount++);
 }
 
 void MainWindow::decX()
 {
-    float coord = -ui->comboStep->currentText().toFloat();
     disableAllButtons();
-    emit axisAdj('X', coord, invX, absoluteAfterAxisAdj, 0);
+    emit axisAdj('X', -jogStep, invX, absoluteAfterAxisAdj, 0);
 }
 
 void MainWindow::decY()
 {
-    float coord = -ui->comboStep->currentText().toFloat();
     disableAllButtons();
-    emit axisAdj('Y', coord, invY, absoluteAfterAxisAdj, 0);
+    emit axisAdj('Y', -jogStep, invY, absoluteAfterAxisAdj, 0);
 }
 
 void MainWindow::decZ()
 {
-    float coord = -ui->comboStep->currentText().toFloat();
     disableAllButtons();
-    emit axisAdj('Z', coord, invZ, absoluteAfterAxisAdj, sliderZCount++);
+    emit axisAdj('Z', -jogStep, invZ, absoluteAfterAxisAdj, sliderZCount++);
 }
 
-void MainWindow::decC()
+void MainWindow::decFourth()
 {
-    float coord = -ui->comboStep->currentText().toFloat();
-    disableAllButtons();
-    emit axisAdj('C', coord, invC, absoluteAfterAxisAdj, 0);
+/// LETARTARE 25-04-2014
+/*  May 20, 2014 : removing this absurd limit  !
+	char four = controlParams.fourthAxisType;
+	if (four == FOURTH_AXIS_A || four == FOURTH_AXIS_B || four == FOURTH_AXIS_C) {
+		float actual_position = ui->lcdWorkNumberFourth->value() ;
+		if (actual_position >= -360.0 + jogStep ) {
+			disableAllButtons();
+			emit axisAdj(controlParams.fourthAxisType, -jogStep, invFourth, absoluteAfterAxisAdj, 0);
+		}
+		else  {
+			ui->DecFourthBtn->setEnabled(false) ;
+			ui->IncFourthBtn->setEnabled(true) ;
+		}
+	}
+/// <--
+	else  
+*/
+		disableAllButtons();
+		emit axisAdj(controlParams.fourthAxisType, -jogStep, invFourth, absoluteAfterAxisAdj, 0);	
 }
-void MainWindow::incC()
+void MainWindow::incFourth()
 {
-    float coord = ui->comboStep->currentText().toFloat();
-    disableAllButtons();
-    emit axisAdj('C', coord, invC, absoluteAfterAxisAdj, 0);
+/// LETARTARE 25-04-2014
+/*  May 20, 2014 : removing this absurd limit  !
+	char four = controlParams.fourthAxisType;
+	if (four == FOURTH_AXIS_A || four == FOURTH_AXIS_B || four == FOURTH_AXIS_C) {
+		float actual_position = ui->lcdWorkNumberFourth->value() ;
+		if (actual_position <= 360.0 - jogStep ) {
+			disableAllButtons();
+			emit axisAdj(controlParams.fourthAxisType, jogStep, invFourth, absoluteAfterAxisAdj, 0);
+		}
+		else {
+			ui->DecFourthBtn->setEnabled(true) ;
+			ui->IncFourthBtn->setEnabled(false) ;
+		}
+	}
+/// <-
+	else  
+*/
+		disableAllButtons();
+		emit axisAdj(controlParams.fourthAxisType, jogStep, invFourth, absoluteAfterAxisAdj, 0);
 }
 
 void MainWindow::getOptions()
@@ -746,14 +782,14 @@ void MainWindow::getOptions()
     opt.exec();
 }
 
-void MainWindow::gotoXYZC()
+void MainWindow::gotoXYZFourth()
 {
     if (ui->comboCommand->lineEdit()->text().length() == 0)
         return;
 
     QString line = ui->comboCommand->lineEdit()->text().append("\r");
 
-    emit gotoXYZC(line);
+    emit gotoXYZFourth(line);
 }
 
 void MainWindow::openFile()
@@ -1018,6 +1054,23 @@ void MainWindow::readSettings()
 
     promptedAggrPreload = settings.value(SETTINGS_PROMPTED_AGGR_PRELOAD, false).value<bool>();
 
+    QString absAfterAdj = settings.value(SETTINGS_ABSOLUTE_AFTER_AXIS_ADJ, "false").value<QString>();
+    absoluteAfterAxisAdj = (absAfterAdj == "true");
+    ui->chkRestoreAbsolute->setChecked(absoluteAfterAxisAdj);
+
+    jogStepStr = settings.value(SETTINGS_JOG_STEP, "1").value<QString>();
+    jogStep = jogStepStr.toFloat();
+
+    int indexDesired = 0;
+    QString steps[] = { "0.01", "0.1", "1", "10", "100" };
+    for (unsigned int i = 0; i < (sizeof (steps) / sizeof (steps[0])); i++) {
+        ui->comboStep->addItem(steps[i]);
+        if (jogStepStr == steps[i]) {
+            indexDesired = i;
+        }
+    }
+    ui->comboStep->setCurrentIndex(indexDesired);
+
     settings.beginGroup( "mainwindow" );
 
     restoreGeometry(settings.value( "geometry", saveGeometry() ).toByteArray());
@@ -1090,7 +1143,7 @@ void MainWindow::updateSettingsFromOptionDlg(QSettings& settings)
     QString sinvY = settings.value(SETTINGS_INVERSE_Y, "false").value<QString>();
     QString sinvZ = settings.value(SETTINGS_INVERSE_Z, "false").value<QString>();
     //QString smm = settings.value(SETTINGS_USE_MM_FOR_MANUAL_CMDS,"false").value<QString>();
-	QString sinvC = settings.value(SETTINGS_INVERSE_C, "false").value<QString>();
+    QString sinvFourth = settings.value(SETTINGS_INVERSE_FOURTH, "false").value<QString>();
     QString sdbgLog = settings.value(SETTINGS_ENABLE_DEBUG_LOG, "true").value<QString>();
     g_enableDebugLog.set(sdbgLog == "true");
 
@@ -1111,45 +1164,73 @@ void MainWindow::updateSettingsFromOptionDlg(QSettings& settings)
     invX = sinvX == "true";
     invY = sinvY == "true";
     invZ = sinvZ == "true";
-	invC = sinvC == "true";
+    invFourth = sinvFourth == "true";
 
     controlParams.waitTime = settings.value(SETTINGS_RESPONSE_WAIT_TIME, DEFAULT_WAIT_TIME_SEC).value<int>();
     controlParams.zJogRate = settings.value(SETTINGS_Z_JOG_RATE, DEFAULT_Z_JOG_RATE).value<double>();
     QString useMmManualCmds = settings.value(SETTINGS_USE_MM_FOR_MANUAL_CMDS, "true").value<QString>();
     controlParams.useMm = useMmManualCmds == "true";
-    QString useAggrPreload = settings.value(SETTINGS_USE_AGGRESSIVE_PRELOAD, "false").value<QString>();
+    QString useAggrPreload = settings.value(SETTINGS_USE_AGGRESSIVE_PRELOAD, "true").value<QString>();
     controlParams.useAggressivePreload = useAggrPreload == "true";
-    QString useFourAxis = settings.value(SETTINGS_FOUR_AXIS, "false").value<QString>();
+    QString waitForJogToComplete = settings.value(SETTINGS_WAIT_FOR_JOG_TO_COMPLETE, "true").value<QString>();
+    controlParams.waitForJogToComplete = waitForJogToComplete == "true";
+
+    QString useFourAxis = settings.value(SETTINGS_FOUR_AXIS_USE, "false").value<QString>();
     controlParams.useFourAxis = useFourAxis == "true";
+    if (controlParams.useFourAxis)
+    {
+        char type = settings.value(SETTINGS_FOUR_AXIS_TYPE, FOURTH_AXIS_A).value<char>();
+        controlParams.fourthAxisType = type;
+    }
+
+    ui->lcdWorkNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->lcdMachNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->IncFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->DecFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->lblFourthJog->setEnabled(controlParams.useFourAxis);
 
     if (!controlParams.useFourAxis)
     {
-        ui->DecCBtn->hide();
-        ui->IncCBtn->hide();
-        ui->lblCJog->hide();
-        ui->lcdWorkNumberC->hide();
-        ui->lcdWorkNumberC->setAttribute(Qt::WA_DontShowOnScreen, true);
-        ui->lcdMachNumberC->hide();
-        ui->lcdMachNumberC->setAttribute(Qt::WA_DontShowOnScreen, true);
-        ui->lblC->hide();
-        ui->lblC->setAttribute(Qt::WA_DontShowOnScreen, true);
+        ui->DecFourthBtn->hide();
+        ui->IncFourthBtn->hide();
+        ui->lblFourthJog->hide();
+        ui->lcdWorkNumberFourth->hide();
+        ui->lcdWorkNumberFourth->setAttribute(Qt::WA_DontShowOnScreen, true);
+        ui->lcdMachNumberFourth->hide();
+        ui->lcdMachNumberFourth->setAttribute(Qt::WA_DontShowOnScreen, true);
+        ui->lblFourth->hide();
+        ui->lblFourth->setAttribute(Qt::WA_DontShowOnScreen, true);
     }
     else
     {
-        ui->DecCBtn->show();
-        ui->IncCBtn->show();
-        ui->lblCJog->show();
-        ui->lcdWorkNumberC->show();
-        ui->lcdWorkNumberC->setAttribute(Qt::WA_DontShowOnScreen, false);
-        ui->lcdMachNumberC->show();
-        ui->lcdMachNumberC->setAttribute(Qt::WA_DontShowOnScreen, false);
-        ui->lblC->show();
-        ui->lblC->setAttribute(Qt::WA_DontShowOnScreen, false);
-    }
+        ui->DecFourthBtn->show();
+        ui->IncFourthBtn->show();
+        ui->lblFourthJog->show();
+        ui->lcdWorkNumberFourth->show();
+        ui->lcdWorkNumberFourth->setAttribute(Qt::WA_DontShowOnScreen, false);
+        ui->lcdMachNumberFourth->show();
+        ui->lcdMachNumberFourth->setAttribute(Qt::WA_DontShowOnScreen, false);
+        ui->lblFourth->show();
+        ui->lblFourth->setAttribute(Qt::WA_DontShowOnScreen, false);
+        ui->lblFourth->setText(QString(controlParams.fourthAxisType));
 
-    QString absAfterAdj = settings.value(SETTINGS_ABSOLUTE_AFTER_AXIS_ADJ, "false").value<QString>();
-    absoluteAfterAxisAdj = absAfterAdj == "true";
-    ui->chkRestoreAbsolute->setChecked(absoluteAfterAxisAdj);
+        QString axisJog(tr("Z Jog"));// not correct, but a default placeholder we have a translation for already
+        char axis = controlParams.fourthAxisType;
+        if (axis == FOURTH_AXIS_A)
+            axisJog = tr("A Jog");
+        else if (axis == FOURTH_AXIS_B)
+            axisJog = tr("B Jog");
+        else if (axis == FOURTH_AXIS_C)
+            axisJog = tr("C Jog");
+        else if (axis == FOURTH_AXIS_U)
+            axisJog = tr("U Jog");
+        else if (axis == FOURTH_AXIS_V)
+            axisJog = tr("V Jog");
+        else if (axis == FOURTH_AXIS_W)
+            axisJog = tr("W Jog");
+
+        ui->lblFourthJog->setText(axisJog);
+    }
 
     QString zRateLimit = settings.value(SETTINGS_Z_RATE_LIMIT, "false").value<QString>();
     controlParams.zRateLimit = zRateLimit == "true";
@@ -1163,6 +1244,14 @@ void MainWindow::updateSettingsFromOptionDlg(QSettings& settings)
 
     controlParams.zRateLimitAmount = settings.value(SETTINGS_Z_RATE_LIMIT_AMOUNT, DEFAULT_Z_LIMIT_RATE).value<double>();
     controlParams.xyRateAmount = settings.value(SETTINGS_XY_RATE_AMOUNT, DEFAULT_XY_RATE).value<double>();
+
+    QString enPosReq = settings.value(SETTINGS_ENABLE_POS_REQ, "true").value<QString>();
+    controlParams.usePositionRequest = enPosReq == "true";
+    controlParams.positionRequestType = settings.value(SETTINGS_TYPE_POS_REQ, PREQ_ALWAYS_NO_IDLE_CHK).value<QString>();
+    double posReqFreq = settings.value(SETTINGS_POS_REQ_FREQ_SEC, DEFAULT_POS_REQ_FREQ_SEC).value<double>();
+    controlParams.postionRequestTimeMilliSec = static_cast<int>(posReqFreq) * 1000;
+
+    setLcdState(controlParams.usePositionRequest);
 }
 
 // save last state of settings
@@ -1177,8 +1266,8 @@ void MainWindow::writeSettings()
     settings.setValue(SETTINGS_BAUD, ui->comboBoxBaudRate->currentText());
 
     settings.setValue(SETTINGS_PROMPTED_AGGR_PRELOAD, promptedAggrPreload);
-
     settings.setValue(SETTINGS_ABSOLUTE_AFTER_AXIS_ADJ, ui->chkRestoreAbsolute->isChecked());
+    settings.setValue(SETTINGS_JOG_STEP, ui->comboStep->currentText());
 
     // From http://stackoverflow.com/questions/74690/how-do-i-store-the-window-size-between-sessions-in-qt
     settings.beginGroup("mainwindow");
@@ -1211,7 +1300,7 @@ void MainWindow::receiveListOut(QString msg)
 
 void MainWindow::addToStatusList(bool in, QString msg)
 {
-    msg.trimmed();
+    msg = msg.trimmed();
     msg.remove('\r');
     msg.remove('\n');
 
@@ -1244,7 +1333,7 @@ void MainWindow::addToStatusList(QStringList& list)
     QStringList cleanList;
     foreach (QString msg, list)
     {
-        msg.trimmed();
+        msg = msg.trimmed();
         msg.remove('\r');
         msg.remove('\n');
 
@@ -1377,11 +1466,11 @@ void MainWindow::toggleRestoreAbsolute()
 
 void MainWindow::updateCoordinates(Coord3D machineCoord, Coord3D workCoord)
 {
-    ui->lcdWorkNumberC->setEnabled(controlParams.useFourAxis);
-    ui->lcdMachNumberC->setEnabled(controlParams.useFourAxis);
-    ui->IncCBtn->setEnabled(controlParams.useFourAxis);
-    ui->DecCBtn->setEnabled(controlParams.useFourAxis);
-    ui->lblCJog->setEnabled(controlParams.useFourAxis);
+    ui->lcdWorkNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->lcdMachNumberFourth->setEnabled(controlParams.useFourAxis);
+    ui->IncFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->DecFourthBtn->setEnabled(controlParams.useFourAxis);
+    ui->lblFourthJog->setEnabled(controlParams.useFourAxis);
     machineCoordinates = machineCoord;
     workCoordinates = workCoord;
 /*
@@ -1407,12 +1496,12 @@ void MainWindow::refreshLcd()
     lcdDisplay('Y', false, machineCoordinates.y);
     lcdDisplay('Z', false, machineCoordinates.z);
     if (controlParams.useFourAxis) {
-		lcdDisplay('C', true, workCoordinates.c);
-		lcdDisplay('C', false, machineCoordinates.c);
+        lcdDisplay(controlParams.fourthAxisType, true, workCoordinates.fourth);
+        lcdDisplay(controlParams.fourthAxisType, false, machineCoordinates.fourth);
 	}
 	else {
-		lcdDisplay('C', true, 0);
-		lcdDisplay('C', false, 0);
+        lcdDisplay(controlParams.fourthAxisType, true, 0);
+        lcdDisplay(controlParams.fourthAxisType, false, 0);
 	}
 }
 
@@ -1439,11 +1528,22 @@ void MainWindow::lcdDisplay(char axis, bool workCoord, float floatVal)
         else
             ui->lcdMachNumberZ->display(value);
         break;
-    case 'C':
-        if (workCoord)
-            ui->lcdWorkNumberC->display(value);
+    default:
+        if (axis == FOURTH_AXIS_A || axis == FOURTH_AXIS_B || axis == FOURTH_AXIS_C
+///  LETARTARE
+			|| axis == FOURTH_AXIS_U || axis == FOURTH_AXIS_V || axis == FOURTH_AXIS_W
+/// <-
+			)
+        {
+            if (workCoord)
+                ui->lcdWorkNumberFourth->display(value);
+            else
+                ui->lcdMachNumberFourth->display(value);
+        }
         else
-            ui->lcdMachNumberC->display(value);
+        {
+            err("Unexpected type %c", axis);
+        }
         break;
     }
 }
@@ -1605,4 +1705,37 @@ void MainWindow::setQueuedCommands(int commandCount, bool running)
     }
 
     lastQueueCount = commandCount;
+}
+
+void MainWindow::setLcdState(bool valid)
+{
+    if (lastLcdStateValid != valid)
+    {
+        QString ss = "";
+        if (!valid)
+        {
+            ss = "QLCDNumber { background-color: #F8F8F8; color: #F0F0F0; }";
+        }
+        ui->lcdWorkNumberX->setStyleSheet(ss);
+        ui->lcdMachNumberX->setStyleSheet(ss);
+        ui->lcdWorkNumberY->setStyleSheet(ss);
+        ui->lcdMachNumberY->setStyleSheet(ss);
+        ui->lcdWorkNumberZ->setStyleSheet(ss);
+        ui->lcdMachNumberZ->setStyleSheet(ss);
+        ui->lcdWorkNumberFourth->setStyleSheet(ss);
+        ui->lcdMachNumberFourth->setStyleSheet(ss);
+
+        lastLcdStateValid = valid;
+    }
+}
+
+void MainWindow::refreshPosition()
+{
+    gotoXYZFourth(REQUEST_CURRENT_POS);
+}
+
+void MainWindow::comboStepChanged(const QString& text)
+{
+    jogStepStr = text;
+    jogStep = jogStepStr.toFloat();
 }

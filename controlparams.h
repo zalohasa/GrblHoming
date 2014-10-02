@@ -24,6 +24,11 @@ public:
     int grblLineBufferLen;
     bool useFourAxis;
     int charSendDelayMs;
+    char fourthAxisType;
+    bool usePositionRequest;
+    QString positionRequestType;
+    int postionRequestTimeMilliSec;
+    bool waitForJogToComplete;
 };
 
 #endif // CONTROLPARAMS_H

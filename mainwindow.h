@@ -102,7 +102,7 @@ signals:
     void shutdown();
     void sendGcode(QString line, bool recordResponseOnFail = false, int waitCount = SHORT_WAIT_SEC);
     void sendFile(QString path);
-    void gotoXYZC(QString line);
+    void gotoXYZFourth(QString line);
     void axisAdj(char axis, float coord, bool inv, bool absoluteAfterAxisAdj, int sliderZCount);
     void setResponseWait(ControlParams controlParams);
     void setProgress(int percent);
@@ -122,14 +122,14 @@ private slots:
     void decX();
     void decY();
     void decZ();
-	void decC();
-	void incC();
+    void decFourth();
+    void incFourth();
     void incX();
     void incY();
     void incZ();
     void setHome();
         //manual
-    void gotoXYZC();
+    void gotoXYZFourth();
         //send Gcode
     void begin();
     void openFile();
@@ -167,7 +167,13 @@ private slots:
     void statusSliderPressed();
     void statusSliderReleased();
     void setQueuedCommands(int commandCount, bool running);
+//<<<<<<< HEAD
     void testLeveling();
+//=======
+    void setLcdState(bool valid);
+    void refreshPosition();
+    void comboStepChanged(const QString& text);
+//>>>>>>> master
 
 private:
     // enums
@@ -200,7 +206,7 @@ private:
     bool invX;
     bool invY;
     bool invZ;
-	bool invC;
+    bool invFourth;
 	/// for translation
 	QString open_button_text ;
 	QString close_button_text ;
@@ -231,6 +237,9 @@ private:
     int lastQueueCount;
     int queuedCommandState;
     QStringList fullStatus;
+    bool lastLcdStateValid;
+    float jogStep;
+    QString jogStepStr;
 
     //methods
     int SendJog(QString strline);

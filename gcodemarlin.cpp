@@ -76,7 +76,7 @@ void GCodeMarlin::sendControllerUnlock()
 void GCodeMarlin::controllerSetHome()
 {
     clearToHome();
-    gotoXYZC("G92 X0 Y0 Z0");
+    gotoXYZFourth("G92 X0 Y0 Z0");
 }
 
 void GCodeMarlin::goToHome()
@@ -596,7 +596,7 @@ void GCodeMarlin::parseCoordinates(const QString& received)
         workCoord.y = list.at(2).toFloat();
         workCoord.z = list.at(3).toFloat();
         if (numaxis == MAX_AXIS_COUNT)
-            workCoord.c = list.at(4).toFloat();
+            workCoord.fourth = list.at(4).toFloat();
         /*if (state != "Run")
             workCoord.stoppedZ = true;
         else
@@ -611,8 +611,8 @@ void GCodeMarlin::parseCoordinates(const QString& received)
                  );
         else if (numaxis == MAX_AXIS_COUNT)
             diag(qPrintable(tr("Decoded:MPos: %f,%f,%f,%f WPos: %f,%f,%f,%f\n")),
-                 machineCoord.x, machineCoord.y, machineCoord.z, machineCoord.c,
-                 workCoord.x, workCoord.y, workCoord.z, workCoord.c
+                 machineCoord.x, machineCoord.y, machineCoord.z, machineCoord.fourth,
+                 workCoord.x, workCoord.y, workCoord.z, workCoord.fourth
                  );
 
         if (workCoord.z > maxZ)
@@ -1487,7 +1487,7 @@ QStringList GCodeMarlin::doZRateLimit(QString inputLine, QString& msg, bool& xyR
 
 }
 
-void GCodeMarlin::gotoXYZC(QString line)
+void GCodeMarlin::gotoXYZFourth(QString line)
 {
     pollPosWaitForIdle();
 
@@ -1509,7 +1509,7 @@ void GCodeMarlin::gotoXYZC(QString line)
             item = getMoveAmountFromString("Z", list.at(i));
             moveDetected = item.length() > 0 ;
             if (numaxis == MAX_AXIS_COUNT)  {
-                item = getMoveAmountFromString("C", list.at(i));
+                item = getMoveAmountFromString(QString(controlParams.fourthAxisType), list.at(i));
                 moveDetected = item.length() > 0;
             }
         }
