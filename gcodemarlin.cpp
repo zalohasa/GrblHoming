@@ -729,6 +729,7 @@ void GCodeMarlin::sendFile(QString path)
         do
         {
             QString strline = code.readLine();
+            std::cout << "GCodeMarlin::sendFile - Input line: " << strline.toStdString() << std::endl;
 
             emit setVisCurrLine(currLine + 1);
 
@@ -751,10 +752,16 @@ void GCodeMarlin::sendFile(QString path)
                 }
 
                 strline = makeLineMarlinFriendly(strline);
-                computeCoordinates(strline);
 
                 if (strline.size() != 0)
                 {
+
+                    if (interpolator != NULL)
+                    {
+                        //We need to change the Z value using the interpolator
+                        strline = levelLine(strline);
+                    }
+
                     if (controlParams.reducePrecision)
                     {
                         strline = reducePrecision(strline);
@@ -774,12 +781,16 @@ void GCodeMarlin::sendFile(QString path)
                     bool ret = false;
                     if (outputList.size() == 1)
                     {
+                        std::cout << "GCodeMarlin::sendFile - output line: " << outputList.at(0).toStdString() << std::endl;
+                        computeCoordinates(outputList.at(0));
                         ret = sendGcodeLocal(outputList.at(0), false, -1, currLine + 1);
                     }
                     else
                     {
                         foreach (QString outputLine, outputList)
                         {
+                            std::cout << "GCodeMarlin::sendFile - output line: " << outputLine.toStdString() << std::endl;
+                            computeCoordinates(outputLine);
                             ret = sendGcodeLocal(outputLine, false, -1, currLine + 1);
 
                             if (!ret)
@@ -796,13 +807,17 @@ void GCodeMarlin::sendFile(QString path)
                         break;
                     }
                 }
+            } else {
+                std::cout << "GCodeMarlin::sendFile - No output line " << std::endl;
             }
 
             float percentComplete = (currLine * 100.0) / totalLineCount;
             setProgress((int)percentComplete);
 
             currLine++;
+            std::cout << "GCodeMarlin::sendFile - End of line ------------------------------- " << std::endl;
         } while ((code.atEnd() == false) && (!abortState.get()));
+
         file.close();
 
         sendGcodeLocal(REQUEST_CURRENT_POS);
@@ -883,7 +898,7 @@ void GCodeMarlin::sendFile(QString path)
 QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 {
 
-    std::cout << "Making line " << line.toStdString() << " Marlin compatible " << std::endl;
+    std::cout << "GCodeMarlin::makeLineMarlinFriendly - Input line: " << line.toStdString() << std::endl;
 
     //TODO make this value a config option.
     float g0feed = 300;
@@ -904,12 +919,14 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                lastExplicitFeed = feed;
             }
         }
+        std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (QString("G1 ") + tmp).toStdString() << std::endl;
         return QString("G1 ") + tmp;
     }
 
     if (tmp.at(0) == 'X' || tmp.at(0) == 'Y' || tmp.at(0) == 'Z')
     {
         //This is a modal command. Marlin does not support modal command, so prepend the last Gcommand seen.
+        std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (lastGCommand + QString(" ") + tmp).toStdString() << std::endl;
         return lastGCommand + QString(" ") + tmp;
     }
 
@@ -922,26 +939,24 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
         //This has a side efect, in the next G1 command, Marlin will use the G0 feed speed if no speed is specified, so
         //we need to save the last non G0 speed, and manually append it to every G1 command that has no F parameter.
 
-        std::cout << "We have a G command" << std::endl;
         QRegExp rx("G(\\d+)(.*)");
 
         if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
         {
              QStringList list = rx.capturedTexts();
-             std::cout << "list size: " << list.size() << std::endl;
              bool ok = false;
              int commandCode = list.at(1).toInt(&ok);
 
              lastGCommand = "G" + QString::number(commandCode);
-             std::cout << "G code: " << lastGCommand.toStdString() << std::endl;
 
-               QString parameters = list.at(2);
+             QString parameters = list.at(2);
              if (commandCode == 0)
              {
                  if (parameters.indexOf("F") < 0)
                  {
                      //There is no F parameter, just append it.
                      manualFeedSetted = true;
+                     std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(g0feed)).toStdString() << std::endl;
                      return tmp + " F" + QString().setNum(g0feed);
                  }
 
@@ -952,6 +967,7 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                  {
                     //Restore the last saved feed
                      manualFeedSetted = false;
+                     std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(lastExplicitFeed)).toStdString() << std::endl;
                      return tmp + " F" + QString().setNum(lastExplicitFeed);
                  } else if (i >= 0)
                  {
@@ -971,7 +987,140 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 
     }
 
+    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << line.toStdString() << std::endl;
     return line;
+}
+
+QString GCodeMarlin::levelLine(const QString &command)
+{
+    static double lastX = 0;
+    static double lastY = 0;
+    static double lastZ = 0;
+    QString tmp = command.trimmed();
+    tmp = tmp.toUpper();
+    QRegExp rx("G(\\d+)(.*)");
+
+    if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
+    {
+         QStringList list = rx.capturedTexts();
+         bool ok = false;
+         int commandCode = list.at(1).toInt(&ok);
+         QString parameters = list.at(2);
+
+         if (commandCode != 0 && commandCode != 1)
+         {
+             return command;
+         }
+
+         bool hasX = false;
+         if (parameters.indexOf("X") >= 0)
+         {
+             hasX = true;
+             QRegExp exp("X(-*\\d+\\.*\\d*)");
+             if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
+             {
+                 QStringList lst = exp.capturedTexts();
+                 ok = false;
+                 double newX = lst.at(1).toDouble(&ok);
+                 if (ok)
+                     lastX = newX;
+             }
+         }
+
+         bool hasY = false;
+         if (parameters.indexOf("Y") >= 0)
+         {
+             hasY = true;
+             QRegExp exp("Y(-*\\d+\\.*\\d*)");
+             if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
+             {
+                 QStringList lst = exp.capturedTexts();
+                 ok = false;
+                 double newY = lst.at(1).toDouble(&ok);
+                 if (ok)
+                     lastY = newY;
+             }
+         }
+
+         bool hasZ = false;
+         if (parameters.indexOf("Z") >= 0)
+         {
+             hasZ = true;
+             QRegExp exp("Z(-*\\d+\\.*\\d*)");
+             if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
+             {
+                 QStringList lst = exp.capturedTexts();
+                 ok = false;
+                 double newZ = lst.at(1).toDouble(&ok);
+                 if (ok)
+                     lastZ = newZ;
+             }
+         }
+
+
+         std::cout << "GCodeMarlin::levelLine - Line original data: X: " << lastX << " Y:" << lastY << " Z:" << lastZ << std::endl;
+
+         double targetZ = lastZ;
+         double delta = 0;
+         interpolator->bicubicInterpolate(lastX, lastY, delta);
+         targetZ += delta;
+
+         std::cout << "GCodeMarlin::levelLine - Line interpolated data: X: " << lastX << " Y:" << lastY << " Z:" << targetZ << std::endl;
+
+         QStringList components = tmp.split(" ", QString::SkipEmptyParts);
+         QString c;
+         QString newCmd = "";
+
+         //TODO think about what to do with the fourth axis.
+         if (!hasX && !hasY && !hasZ)
+         {
+             //The command has only F or F and Fourth
+             return command;
+         }
+
+         QString g,x,y,z,fourth,f;
+
+         foreach (c, components)
+         {
+            if (c.at(0) == 'G'){
+                g = c;
+            }else if (c.at(0) == 'X'){
+                x = c;
+            }else if (c.at(0) == 'Y'){
+                y = c;
+            } else if(c.at(0) == 'Z') {
+                //nothing to do with Z
+            } else if (c.at(0) == 'F') {
+                f = c;
+            } else if (c.at(0) == controlParams.fourthAxisType){
+                fourth = c;
+            }
+         }
+         newCmd.append(g).append(" ");
+         if (!x.isEmpty())
+         {
+            newCmd.append(x).append(" ");
+         }
+
+         if (!y.isEmpty())
+         {
+             newCmd.append(y).append(" ");
+         }
+         newCmd.append("Z").append(QString::number(targetZ)).append(" ");
+         if (!fourth.isEmpty())
+         {
+             newCmd.append(fourth).append(" ");
+         }
+         if (!f.isEmpty())
+         {
+             newCmd.append(f);
+         }
+
+         std::cout << "GCodeMarlin::levelLine - Final GCode Line: " << newCmd.toStdString() << std::endl;
+
+         return newCmd;
+    }
+    return command;
 }
 
 void GCodeMarlin::computeCoordinates(const QString &command)
@@ -1688,10 +1837,11 @@ bool GCodeMarlin::probeResultToValue(const QString & result, double &zCoord)
 
 void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe)
 {
-    cout << "Starting Z Leveling procedure" << endl;
+    cout << __FUNCTION__ << " - Starting Z Leveling procedure" << endl;
     if (interpolator != NULL)
     {
         delete interpolator;
+        interpolator = NULL;
 
     }
 
@@ -1702,12 +1852,12 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
     double xLenght = extent.right() - extent.left();
     double yLenght = extent.bottom() - extent.top();
 
-    cout << "xLenght: " <<xLenght << "ylen: " << yLenght << endl;
+    cout << __FUNCTION__ << " - xLenght: " <<xLenght << "ylen: " << yLenght << endl;
 
     double xInterval = xLenght / (xSteps - 1);
     double yInterval = yLenght / (ySteps - 1);
 
-    cout << "xInterval: " << xInterval << " yInterval: " << yInterval << endl;
+    cout << __FUNCTION__ << " - xInterval: " << xInterval << " yInterval: " << yInterval << endl;
 
     for (int i = 0; i<xSteps; i++)
     {
@@ -1732,16 +1882,16 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
 
 
     sendGcodeInternal("G30", res, false, 0);
-    cout << "Result: " << res.toStdString() << endl;
+    cout << __FUNCTION__ << " - Result: " << res.toStdString() << endl;
 
     if (!probeResultToValue(res, zCoord))
     {
-        cout << "ERROR CONVERTING ZCOORDINATE" << endl;
+        cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE" << endl;
         return;
     }
 
     double zSafeCoord = zCoord + zSafe;
-    cout << "Safe coordinate: " << zSafeCoord << endl;
+    cout << __FUNCTION__ << " - Safe coordinate: " << zSafeCoord << endl;
     sendGcodeLocal(QString("G1 Z").append(QString::number(zSafeCoord)));
 
     //sendGcodeLocal(QString("G1 Z").append(QString::number(zSafe)).append(" F100\r"));
@@ -1753,7 +1903,7 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
         for (int j = 0; j < ySteps; j++)
         {
 
-            cout << "Probing in: " << xValues[i] << " - " << yValues[j] << endl;
+            cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
             sendGcodeInternal(QString("G1 X").
                            append(QString::number(xValues[i])).
                                   append(" Y").
@@ -1761,12 +1911,12 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
-                cout << "ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
+                cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
                 return;
             }
             zValues[j*xSteps + i] = zCoord;
             zSafeCoord = zCoord + zSafe;
-            cout << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
+            cout << __FUNCTION__ << " - ----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
         }
         i++;
@@ -1776,7 +1926,7 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
         }
         for (int j = ySteps - 1; j >= 0; j--)
         {
-            cout << "Probing in: " << xValues[i] << " - " << yValues[j] << endl;
+            cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
             sendGcodeInternal(QString("G1 X").
                            append(QString::number(xValues[i])).
                                   append(" Y").
@@ -1784,17 +1934,20 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
-                cout << "ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
+                cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
                 return;
             }
             zValues[j*xSteps + i] = zCoord;
             zSafeCoord = zCoord + zSafe;
-            cout << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
+            cout << __FUNCTION__ << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
         }
 
     }
 
     interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues);
+    //Return to 0.0
+    sendGcodeLocal("G28 Z0\r");
+    sendGcodeLocal("G0 X0 Y0 F300\r");
 
 }

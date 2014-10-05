@@ -449,7 +449,7 @@ void MainWindow::goHomeSafe()
 
 void MainWindow::testLeveling()
 {
-    QRect ext(0, 0, 101, 101);
+    QRect ext(0, 0, 105, 105);
     emit doTestLeveling(ext, 3, 3, 1.5d);
 }
 
