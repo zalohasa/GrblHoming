@@ -76,6 +76,8 @@ signals:
     void setVisCurrLine(int currLine);
     void setLcdState(bool valid);
     void setVisualLivenessCurrPos(bool isLiveCP);
+    void levelingProgress(int);
+    void levelingEnded();
 
 public slots:
     virtual void openPort(QString commPortStr, QString baudRate) = 0;
@@ -89,8 +91,10 @@ public slots:
     virtual void controllerSetHome() = 0;
     virtual void sendControllerReset() = 0;
     virtual void sendControllerUnlock() = 0;
-    virtual void performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe) = 0;
+    virtual void performZLeveling(QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zSafe) = 0;
     virtual void goToHome() = 0;
+    virtual bool isZInterpolatorReady() = 0;
+    virtual void clearLevelingData() = 0;
 
 protected:
     enum PosReqStatus

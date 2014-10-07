@@ -29,13 +29,10 @@ MainWindow::MainWindow(QWidget *parent) :
     sliderTo(0.0),
     sliderZCount(0),
     scrollRequireMove(true), scrollPressed(false),
-//<<<<<<< HEAD
     queuedCommandsStarved(false), lastQueueCount(0), queuedCommandState(QCS_OK), gcode(NULL),
     currentController(-1),
-//=======
-    //queuedCommandsStarved(false), lastQueueCount(0), queuedCommandState(QCS_OK),
+//queuedCommandsStarved(false), lastQueueCount(0), queuedCommandState(QCS_OK),
     lastLcdStateValid(true)
-//>>>>>>> master
 {
     // Setup our application information to be used by QSettings
     QCoreApplication::setOrganizationName(COMPANY_NAME);
@@ -73,6 +70,13 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->lcdMachNumberZ->setDigitCount(8);
     ui->lcdWorkNumberFourth->setDigitCount(8);
     ui->lcdMachNumberFourth->setDigitCount(8);
+
+    ui->levelingProgressBar->setVisible(false);
+    ui->levelingProgressBar->setValue(0);
+
+    ui->levelingUseData->setChecked(false);
+    ui->levelingUseData->setEnabled(false);
+    ui->btnClearLeveling->setEnabled(false);
 
     if (!controlParams.useFourAxis)
     {
@@ -112,11 +116,14 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->btnUnlockGrbl,SIGNAL(clicked()),this,SLOT(grblUnlock()));
     connect(ui->btnGoHomeSafe,SIGNAL(clicked()),this,SLOT(goHomeSafe()));
     connect(ui->btnTestLeveling, SIGNAL(clicked()), this, SLOT(testLeveling()));
+    connect(ui->btnCancelLeveling, SIGNAL(clicked()), this, SLOT(stopLeveling()));
+    connect(ui->btnClearLeveling, SIGNAL(clicked()), this, SLOT(clearLevelingData()));
     connect(ui->verticalSliderZJog,SIGNAL(valueChanged(int)),this,SLOT(zJogSliderDisplay(int)));
     connect(ui->verticalSliderZJog,SIGNAL(sliderPressed()),this,SLOT(zJogSliderPressed()));
     connect(ui->verticalSliderZJog,SIGNAL(sliderReleased()),this,SLOT(zJogSliderReleased()));
     connect(ui->pushButtonRefreshPos,SIGNAL(clicked()),this,SLOT(refreshPosition()));
     connect(ui->comboStep,SIGNAL(currentIndexChanged(QString)),this,SLOT(comboStepChanged(QString)));
+    connect(ui->levelingUseData, SIGNAL(toggled(bool)), this, SLOT(useZLevelingDataToggle(bool)));
     connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
 
     connect(&runtimeTimer, SIGNAL(setRuntime(QString)), ui->outputRuntime, SLOT(setText(QString)));
@@ -281,7 +288,7 @@ void MainWindow::createGcodeConnects()
     connect(this, SIGNAL(sendGrblReset()), gcode, SLOT(sendControllerReset()));
     connect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     connect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
-    connect(this, SIGNAL(doTestLeveling(QRect, int, int, double)), gcode, SLOT(performZLeveling(QRect,int,int,double)));
+    connect(this, SIGNAL(doTestLeveling(QRect, int, int, double, double, double)), gcode, SLOT(performZLeveling(QRect,int,int,double, double, double)));
     connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
 
     connect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
@@ -305,6 +312,8 @@ void MainWindow::createGcodeConnects()
     connect(gcode, SIGNAL(setVisualLivenessCurrPos(bool)), ui->wgtVisualizer, SLOT(setVisualLivenessCurrPos(bool)));
     connect(gcode, SIGNAL(setVisCurrLine(int)), ui->wgtVisualizer, SLOT(setVisCurrLine(int)));
     connect(gcode, SIGNAL(setLcdState(bool)), this, SLOT(setLcdState(bool)));
+    connect(gcode, SIGNAL(levelingProgress(int)), this, SLOT(setLevelingProgress(int)));
+    connect(gcode, SIGNAL(levelingEnded()), this, SLOT(setLevelingEnded()));
 
 }
 
@@ -326,7 +335,7 @@ void MainWindow::deleteGcodeConnects()
     disconnect(this, SIGNAL(sendGrblReset()), gcode, SLOT(sendControllerReset()));
     disconnect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     disconnect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
-    disconnect(this, SIGNAL(doTestLeveling(QRect, int, int, double)), gcode, SLOT(performZLeveling(QRect,int,int,double)));
+    disconnect(this, SIGNAL(doTestLeveling(QRect, int, int, double, double, double)), gcode, SLOT(performZLeveling(QRect,int,int,double, double, double)));
     disconnect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
 
     disconnect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
@@ -350,6 +359,8 @@ void MainWindow::deleteGcodeConnects()
     disconnect(gcode, SIGNAL(setVisCurrLine(int)), ui->wgtVisualizer, SLOT(setVisCurrLine(int)));
     disconnect(gcode, SIGNAL(setVisualLivenessCurrPos(bool)), ui->wgtVisualizer, SLOT(setVisualLivenessCurrPos(bool)));
     disconnect(gcode, SIGNAL(setLcdState(bool)), this, SLOT(setLcdState(bool)));
+    disconnect(gcode, SIGNAL(levelingProgress(int)), this, SLOT(setLevelingProgress(int)));
+    disconnect(gcode, SIGNAL(levelingEnded()), this, SLOT(setLevelingEnded()));
 
 }
 
@@ -415,6 +426,12 @@ void MainWindow::begin()
     }
 }
 
+void MainWindow::stopLeveling()
+{
+    gcode->setAbort();
+    setLevelingEnded();
+}
+
 void MainWindow::stop()
 {
     gcode->setAbort();
@@ -447,10 +464,73 @@ void MainWindow::goHomeSafe()
     emit goToHome();
 }
 
+void MainWindow::setLevelingEnded()
+{
+    ui->btnTestLeveling->setEnabled(true);
+    ui->levelingProgressBar->setVisible(false);
+    if (gcode->isZInterpolatorReady())
+    {
+        ui->btnClearLeveling->setEnabled(true);
+        ui->levelingUseData->setChecked(true);
+        ui->levelingUseData->setEnabled(true);
+        controlParams.useZLevelingData = true;
+    } else {
+        ui->btnClearLeveling->setEnabled(false);
+        ui->levelingUseData->setChecked(false);
+        ui->levelingUseData->setEnabled(false);
+        controlParams.useZLevelingData = false;
+    }
+}
+
+void MainWindow::setLevelingProgress(int progress)
+{
+    ui->levelingProgressBar->setValue(progress);
+}
+
+void MainWindow::useZLevelingDataToggle(bool checked)
+{
+    controlParams.useZLevelingData = checked;
+}
+
+void MainWindow::clearLevelingData()
+{
+    ui->btnClearLeveling->setEnabled(false);
+    ui->levelingUseData->setChecked(false);
+    ui->levelingUseData->setEnabled(false);
+    controlParams.useZLevelingData = false;
+}
+
 void MainWindow::testLeveling()
 {
-    QRect ext(0, 0, 105, 105);
-    emit doTestLeveling(ext, 3, 3, 1.5d);
+    ui->btnTestLeveling->setEnabled(false);
+
+    bool ok, everythingOk = true;
+    int xExt = ui->levelingXSizeIn->text().toInt(&ok);
+    everythingOk &= ok;
+    int yExt = ui->levelingYSizeIn->text().toInt(&ok);
+    everythingOk &= ok;
+    int xStep = ui->levelingXStepIn->text().toInt(&ok);
+    everythingOk &= ok;
+    int yStep = ui->levelingYStepsIn->text().toInt(&ok);
+    everythingOk &= ok;
+    double zStarting = ui->levelingZStartIn->text().toDouble(&ok);
+    everythingOk &= ok;
+    double zSafe = ui->levelingZSafeIn->text().toDouble(&ok);
+    everythingOk &= ok;
+    double speed = ui->levelingSpeedIn->text().toDouble(&ok);
+    everythingOk &= ok;
+    double offset = ui->levelingOffsetIn->text().toDouble(&ok);
+    everythingOk &= ok;
+
+    //TODO show a warning dialog if the conversions went wrong, and don't emit the signal, so the user can correct the data.
+
+    ui->levelingProgressBar->setMinimum(0);
+    ui->levelingProgressBar->setMaximum((xStep*yStep)+1);
+    ui->levelingProgressBar->setValue(0);
+    ui->levelingProgressBar->setVisible(true);
+
+    QRect ext(0, 0, xExt, yExt);
+    emit doTestLeveling(ext, xStep, yStep, zStarting, speed, zSafe);
 }
 
 // slot called from GCode class to update our state
@@ -733,45 +813,11 @@ void MainWindow::decZ()
 
 void MainWindow::decFourth()
 {
-/// LETARTARE 25-04-2014
-/*  May 20, 2014 : removing this absurd limit  !
-	char four = controlParams.fourthAxisType;
-	if (four == FOURTH_AXIS_A || four == FOURTH_AXIS_B || four == FOURTH_AXIS_C) {
-		float actual_position = ui->lcdWorkNumberFourth->value() ;
-		if (actual_position >= -360.0 + jogStep ) {
-			disableAllButtons();
-			emit axisAdj(controlParams.fourthAxisType, -jogStep, invFourth, absoluteAfterAxisAdj, 0);
-		}
-		else  {
-			ui->DecFourthBtn->setEnabled(false) ;
-			ui->IncFourthBtn->setEnabled(true) ;
-		}
-	}
-/// <--
-	else  
-*/
 		disableAllButtons();
 		emit axisAdj(controlParams.fourthAxisType, -jogStep, invFourth, absoluteAfterAxisAdj, 0);	
 }
 void MainWindow::incFourth()
 {
-/// LETARTARE 25-04-2014
-/*  May 20, 2014 : removing this absurd limit  !
-	char four = controlParams.fourthAxisType;
-	if (four == FOURTH_AXIS_A || four == FOURTH_AXIS_B || four == FOURTH_AXIS_C) {
-		float actual_position = ui->lcdWorkNumberFourth->value() ;
-		if (actual_position <= 360.0 - jogStep ) {
-			disableAllButtons();
-			emit axisAdj(controlParams.fourthAxisType, jogStep, invFourth, absoluteAfterAxisAdj, 0);
-		}
-		else {
-			ui->DecFourthBtn->setEnabled(true) ;
-			ui->IncFourthBtn->setEnabled(false) ;
-		}
-	}
-/// <-
-	else  
-*/
 		disableAllButtons();
 		emit axisAdj(controlParams.fourthAxisType, jogStep, invFourth, absoluteAfterAxisAdj, 0);
 }

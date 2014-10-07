@@ -23,11 +23,8 @@ Options::Options(QWidget *parent) :
     connect(ui->checkBoxUseMmManualCmds,SIGNAL(toggled(bool)),this,SLOT(toggleUseMm(bool)));
     connect(ui->chkLimitZRate,SIGNAL(toggled(bool)),this,SLOT(toggleLimitZRate(bool)));
     connect(ui->checkBoxFourAxis,SIGNAL(toggled(bool)),this,SLOT(toggleFourAxis(bool)));
-//<<<<<<< HEAD
     connect(ui->controllerComboBox, SIGNAL(activated(int)), this, SLOT(controllerChanged(int)));
-//=======
     connect(ui->checkBoxPositionReportEnabled,SIGNAL(toggled(bool)),this,SLOT(togglePosReporting(bool)));
-//>>>>>>> master
 
     QSettings settings;
 

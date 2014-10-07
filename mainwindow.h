@@ -112,7 +112,7 @@ signals:
     void sendGrblUnlock();
     void goToHome();
     void setItems(QList<PosItem>);
-    void doTestLeveling(QRect rect, int xSteps, int ySteps, double zHeight);
+    void doTestLeveling(QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zHeight);
 
 private slots:
     //buttons
@@ -135,6 +135,7 @@ private slots:
     void openFile();
     void stop();
     void stopSending();
+    void stopLeveling();
     //
     void portIsOpen(bool sendCode);
     void portIsClosed(bool reopen);
@@ -167,13 +168,15 @@ private slots:
     void statusSliderPressed();
     void statusSliderReleased();
     void setQueuedCommands(int commandCount, bool running);
-//<<<<<<< HEAD
     void testLeveling();
-//=======
     void setLcdState(bool valid);
     void refreshPosition();
     void comboStepChanged(const QString& text);
-//>>>>>>> master
+    void setLevelingProgress(int progress);
+    void setLevelingEnded();
+    void useZLevelingDataToggle(bool checked);
+    void clearLevelingData();
+
 
 private:
     // enums

@@ -1832,22 +1832,25 @@ bool GCodeMarlin::probeResultToValue(const QString & result, double &zCoord)
             return false;
         }
     }
+    return false;
 
 }
 
-void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe)
+void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double zStarting, double speed, double zSafe)
 {
     cout << __FUNCTION__ << " - Starting Z Leveling procedure" << endl;
+    abortState.set(false);
     if (interpolator != NULL)
     {
         delete interpolator;
         interpolator = NULL;
-
     }
 
     double * xValues = new double[xSteps];
     double * yValues = new double[ySteps];
     double * zValues = new double[xSteps * ySteps];
+
+    cout << __FUNCTION__ << " - right: " << extent.right() << " left: " << extent.left() << endl;
 
     double xLenght = extent.right() - extent.left();
     double yLenght = extent.bottom() - extent.top();
@@ -1873,12 +1876,14 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
     //TODO Load the F speed for G0 commands
     sendGcodeLocal("G90\r");
     sendGcodeLocal("G28 Z0\r");
-    sendGcodeLocal("G0 X0 Y0 F300\r");
+    sendGcodeLocal(QString("G0 X0 Y0 F").append(QString::number(speed)).append("\r"));
     //Get the first ZDepth in the 0,0 coordinate.
     QString res;
     double zCoord = 0.0d;
-    //TODO BORRAR
-    sendGcodeInternal("G0 Z25 F200", res, false, 0);
+    int progress = 0;
+
+    //Goto to Z starting point
+    sendGcodeInternal(QString("G0 Z").append(QString::number(zStarting)).append(" F200"), res, false, 0);
 
 
     sendGcodeInternal("G30", res, false, 0);
@@ -1892,22 +1897,30 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
 
     double zSafeCoord = zCoord + zSafe;
     cout << __FUNCTION__ << " - Safe coordinate: " << zSafeCoord << endl;
-    sendGcodeLocal(QString("G1 Z").append(QString::number(zSafeCoord)));
+    sendGcodeLocal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100\r"));
 
-    //sendGcodeLocal(QString("G1 Z").append(QString::number(zSafe)).append(" F100\r"));
 
     pollPosWaitForIdle();
+    progress++;
+    levelingProgress(progress);
 
     for (int i = 0; i < xSteps; i++)
     {
+        if (abortState.get())
+        {
+            break;
+        }
         for (int j = 0; j < ySteps; j++)
         {
-
+            if (abortState.get())
+            {
+                break;
+            }
             cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
             sendGcodeInternal(QString("G1 X").
                            append(QString::number(xValues[i])).
                                   append(" Y").
-                                  append(QString::number(yValues[j])).append(" F300"), res, false, 0);
+                                  append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
@@ -1918,19 +1931,27 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
             zSafeCoord = zCoord + zSafe;
             cout << __FUNCTION__ << " - ----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
+            progress++;
+            levelingProgress(progress);
         }
+
         i++;
         if (i >= xSteps)
         {
             break;
         }
+
         for (int j = ySteps - 1; j >= 0; j--)
         {
+            if (abortState.get())
+            {
+                break;
+            }
             cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
             sendGcodeInternal(QString("G1 X").
                            append(QString::number(xValues[i])).
                                   append(" Y").
-                                  append(QString::number(yValues[j])).append(" F300"), res, false, 0);
+                                  append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
@@ -1941,13 +1962,32 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
             zSafeCoord = zCoord + zSafe;
             cout << __FUNCTION__ << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
+            progress++;
+            levelingProgress(progress);
         }
-
     }
 
-    interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues);
+    if (!abortState.get())
+    {
+        interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues);
+    }
     //Return to 0.0
     sendGcodeLocal("G28 Z0\r");
-    sendGcodeLocal("G0 X0 Y0 F300\r");
+    sendGcodeLocal(QString("G0 X0 Y0 F").append(QString::number(speed)).append("\r"));
+    levelingEnded();
 
+}
+
+bool GCodeMarlin::isZInterpolatorReady()
+{
+    return interpolator != NULL;
+}
+
+void GCodeMarlin::clearLevelingData()
+{
+    if (interpolator != NULL)
+    {
+        delete interpolator;
+        interpolator = NULL;
+    }
 }

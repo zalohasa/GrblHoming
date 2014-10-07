@@ -1901,11 +1901,23 @@ int GCodeGrbl::getNumaxis()
 	return numaxis;
 }
 
-void GCodeGrbl::performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe)
+void GCodeGrbl::performZLeveling(QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zSafe)
 {
     QString msg("Grbl gcode implementation does not support ZLeveling yet");
     emit addList(msg);
     emit sendMsg(msg);
+}
+
+bool GCodeGrbl::isZInterpolatorReady()
+{
+    //TODO implement this when supporting z leveling.
+    return false;
+}
+
+void GCodeGrbl::clearLevelingData()
+{
+    //TODO implement this when supporting z leveling.
+    return;
 }
 
 GCodeGrbl::PosReqStatus GCodeGrbl::positionUpdate(bool forceIfEnabled /* = false */)

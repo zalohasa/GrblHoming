@@ -62,6 +62,8 @@ signals:
     void setVisCurrLine(int currLine);
     void setLcdState(bool valid);
     void setVisualLivenessCurrPos(bool isLiveCP);
+    void levelingProgress(int);
+    void levelingEnded();
 
 public slots:
     void openPort(QString commPortStr, QString baudRate);
@@ -74,8 +76,10 @@ public slots:
     void controllerSetHome();
     void sendControllerReset();
     void sendControllerUnlock();
-    void performZLeveling(QRect extent, int xSteps, int ySteps, double zSafe);
+    void performZLeveling(QRect extent, int xSteps, int ySteps, double zStarting, double speed, double zSafe);
     void goToHome();
+    bool isZInterpolatorReady();
+    void clearLevelingData();
 
 protected:
     void timerEvent(QTimerEvent *event);

@@ -29,6 +29,7 @@ public:
     QString positionRequestType;
     int postionRequestTimeMilliSec;
     bool waitForJogToComplete;
+    bool useZLevelingData;
 };
 
 #endif // CONTROLPARAMS_H
