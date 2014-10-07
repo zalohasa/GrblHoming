@@ -2055,7 +2055,7 @@
                <item>
                 <widget class="QCheckBox" name="levelingUseData">
                  <property name="text">
-                  <string>Use Z Leveling data for current code</string>
+                  <string>Use Z Leveling data for current file</string>
                  </property>
                 </widget>
                </item>

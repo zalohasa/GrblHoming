@@ -76,6 +76,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
     ui->levelingUseData->setChecked(false);
     ui->levelingUseData->setEnabled(false);
+    ui->btnCancelLeveling->setEnabled(false);
     ui->btnClearLeveling->setEnabled(false);
 
     if (!controlParams.useFourAxis)
@@ -467,6 +468,7 @@ void MainWindow::goHomeSafe()
 void MainWindow::setLevelingEnded()
 {
     ui->btnTestLeveling->setEnabled(true);
+    ui->btnCancelLeveling->setEnabled(false);
     ui->levelingProgressBar->setVisible(false);
     if (gcode->isZInterpolatorReady())
     {
@@ -503,6 +505,7 @@ void MainWindow::clearLevelingData()
 void MainWindow::testLeveling()
 {
     ui->btnTestLeveling->setEnabled(false);
+    ui->btnCancelLeveling->setEnabled(true);
 
     bool ok, everythingOk = true;
     int xExt = ui->levelingXSizeIn->text().toInt(&ok);
