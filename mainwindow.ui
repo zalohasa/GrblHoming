@@ -341,6 +341,13 @@
           </property>
          </widget>
         </item>
+        <item>
+         <widget class="QPushButton" name="btnClearStatusList">
+          <property name="text">
+           <string>Clear Log</string>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
       <item>
@@ -2074,6 +2081,9 @@
             </layout>
            </widget>
           </item>
+          <item>
+           <widget class="LevelingRenderArea" name="levelingRenderArea" native="true"/>
+          </item>
          </layout>
         </widget>
        </widget>
@@ -2196,7 +2206,55 @@
    <header>renderarea.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>LevelingRenderArea</class>
+   <extends>QWidget</extends>
+   <header>LevelingRenderArea.h</header>
+   <container>1</container>
+  </customwidget>
  </customwidgets>
+ <tabstops>
+  <tabstop>cmbPort</tabstop>
+  <tabstop>btnOpenPort</tabstop>
+  <tabstop>comboBoxBaudRate</tabstop>
+  <tabstop>filePath</tabstop>
+  <tabstop>openFile</tabstop>
+  <tabstop>Begin</tabstop>
+  <tabstop>Stop</tabstop>
+  <tabstop>comboCommand</tabstop>
+  <tabstop>tabAxisVisualizer</tabstop>
+  <tabstop>levelingXSizeIn</tabstop>
+  <tabstop>levelingYSizeIn</tabstop>
+  <tabstop>levelingXStepIn</tabstop>
+  <tabstop>levelingYStepsIn</tabstop>
+  <tabstop>levelingZStartIn</tabstop>
+  <tabstop>levelingZSafeIn</tabstop>
+  <tabstop>levelingSpeedIn</tabstop>
+  <tabstop>levelingOffsetIn</tabstop>
+  <tabstop>btnTestLeveling</tabstop>
+  <tabstop>btnCancelLeveling</tabstop>
+  <tabstop>btnClearLeveling</tabstop>
+  <tabstop>levelingUseData</tabstop>
+  <tabstop>btnSetHome</tabstop>
+  <tabstop>btnGoHomeSafe</tabstop>
+  <tabstop>pushButtonRefreshPos</tabstop>
+  <tabstop>btnGRBL</tabstop>
+  <tabstop>DecZBtn</tabstop>
+  <tabstop>chkRestoreAbsolute</tabstop>
+  <tabstop>DecYBtn</tabstop>
+  <tabstop>DecFourthBtn</tabstop>
+  <tabstop>verticalSliderZJog</tabstop>
+  <tabstop>IncXBtn</tabstop>
+  <tabstop>SpindleOn</tabstop>
+  <tabstop>IncFourthBtn</tabstop>
+  <tabstop>statusList</tabstop>
+  <tabstop>IncZBtn</tabstop>
+  <tabstop>DecXBtn</tabstop>
+  <tabstop>IncYBtn</tabstop>
+  <tabstop>comboStep</tabstop>
+  <tabstop>btnResetGrbl</tabstop>
+  <tabstop>btnUnlockGrbl</tabstop>
+ </tabstops>
  <resources>
   <include location="GrblController.qrc"/>
  </resources>

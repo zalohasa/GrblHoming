@@ -30,6 +30,7 @@ public:
     int postionRequestTimeMilliSec;
     bool waitForJogToComplete;
     bool useZLevelingData;
+    double zLevelingOffset;
 };
 
 #endif // CONTROLPARAMS_H

@@ -80,6 +80,7 @@ public slots:
     void goToHome();
     bool isZInterpolatorReady();
     void clearLevelingData();
+    SpilineInterpolate3D * getInterpolator();
 
 protected:
     void timerEvent(QTimerEvent *event);

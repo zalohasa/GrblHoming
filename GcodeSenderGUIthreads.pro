@@ -24,6 +24,7 @@ SOURCES += main.cpp\
     atomicintbool.cpp \
     coord3d.cpp \
     renderarea.cpp \
+    LevelingRenderArea.cpp \
     positem.cpp \
     renderitemlist.cpp \
     lineitem.cpp \
@@ -35,6 +36,7 @@ SOURCES += main.cpp\
     gcodegrbl.cpp \
     gcodemarlin.cpp \
     SpilineInterpolate3D.cpp
+
 
 HEADERS  += mainwindow.h \
     rs232.h \
@@ -48,6 +50,7 @@ HEADERS  += mainwindow.h \
     coord3d.h \
     log4qtdef.h \
     renderarea.h \
+    LevelingRenderArea.h \
     positem.h \
     renderitemlist.h \
     lineitem.h \

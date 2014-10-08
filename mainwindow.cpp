@@ -119,6 +119,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->btnTestLeveling, SIGNAL(clicked()), this, SLOT(testLeveling()));
     connect(ui->btnCancelLeveling, SIGNAL(clicked()), this, SLOT(stopLeveling()));
     connect(ui->btnClearLeveling, SIGNAL(clicked()), this, SLOT(clearLevelingData()));
+    connect(ui->btnClearStatusList, SIGNAL(clicked()), ui->statusList, SLOT(clear()));
     connect(ui->verticalSliderZJog,SIGNAL(valueChanged(int)),this,SLOT(zJogSliderDisplay(int)));
     connect(ui->verticalSliderZJog,SIGNAL(sliderPressed()),this,SLOT(zJogSliderPressed()));
     connect(ui->verticalSliderZJog,SIGNAL(sliderReleased()),this,SLOT(zJogSliderReleased()));
@@ -291,6 +292,7 @@ void MainWindow::createGcodeConnects()
     connect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
     connect(this, SIGNAL(doTestLeveling(QRect, int, int, double, double, double)), gcode, SLOT(performZLeveling(QRect,int,int,double, double, double)));
     connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
+    connect(ui->btnClearLeveling, SIGNAL(clicked()), gcode, SLOT(clearLevelingData()));
 
     connect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     connect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -316,6 +318,7 @@ void MainWindow::createGcodeConnects()
     connect(gcode, SIGNAL(levelingProgress(int)), this, SLOT(setLevelingProgress(int)));
     connect(gcode, SIGNAL(levelingEnded()), this, SLOT(setLevelingEnded()));
 
+
 }
 
 void MainWindow::deleteGcodeConnects()
@@ -338,6 +341,7 @@ void MainWindow::deleteGcodeConnects()
     disconnect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
     disconnect(this, SIGNAL(doTestLeveling(QRect, int, int, double, double, double)), gcode, SLOT(performZLeveling(QRect,int,int,double, double, double)));
     disconnect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
+    disconnect(ui->btnClearLeveling, SIGNAL(clicked()), gcode, SLOT(clearLevelingData()));
 
     disconnect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     disconnect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -423,6 +427,12 @@ void MainWindow::begin()
         ui->btnSetHome->setEnabled(false);
         ui->btnGoHomeSafe->setEnabled(false);
         ui->pushButtonRefreshPos->setEnabled(false);
+
+        bool ok;
+        double offset = ui->levelingOffsetIn->text().toDouble(&ok);
+        //TODO check for OK
+        controlParams.zLevelingOffset = offset;
+        emit setResponseWait(controlParams);
         emit sendFile(ui->filePath->text());
     }
 }
@@ -476,12 +486,16 @@ void MainWindow::setLevelingEnded()
         ui->levelingUseData->setChecked(true);
         ui->levelingUseData->setEnabled(true);
         controlParams.useZLevelingData = true;
+        ui->levelingRenderArea->setInterpolator(gcode->getInterpolator());
     } else {
         ui->btnClearLeveling->setEnabled(false);
         ui->levelingUseData->setChecked(false);
         ui->levelingUseData->setEnabled(false);
         controlParams.useZLevelingData = false;
+        ui->levelingRenderArea->setInterpolator(NULL);
     }
+
+    emit setResponseWait(controlParams);
 }
 
 void MainWindow::setLevelingProgress(int progress)
@@ -500,11 +514,14 @@ void MainWindow::clearLevelingData()
     ui->levelingUseData->setChecked(false);
     ui->levelingUseData->setEnabled(false);
     controlParams.useZLevelingData = false;
+    ui->levelingRenderArea->setInterpolator(NULL);
 }
 
 void MainWindow::testLeveling()
 {
     ui->btnTestLeveling->setEnabled(false);
+    ui->levelingUseData->setEnabled(false);
+    ui->btnClearLeveling->setEnabled(false);
     ui->btnCancelLeveling->setEnabled(true);
 
     bool ok, everythingOk = true;
@@ -532,7 +549,14 @@ void MainWindow::testLeveling()
     ui->levelingProgressBar->setValue(0);
     ui->levelingProgressBar->setVisible(true);
 
-    QRect ext(0, 0, xExt, yExt);
+    QRect ext;
+    ext.setLeft(0);
+    ext.setBottom(0);
+    ext.setRight(xExt);
+    ext.setTop(yExt);
+
+    controlParams.zLevelingOffset = offset;
+
     emit doTestLeveling(ext, xStep, yStep, zStarting, speed, zSafe);
 }
 

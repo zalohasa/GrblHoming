@@ -19,7 +19,24 @@ SpilineInterpolate3D::SpilineInterpolate3D(const double * xValues, unsigned int 
     memcpy(this->yValues, yValues, nValuesY*sizeof(double));
     memcpy(this->xyValues, xyValues, nValuesX*nValuesY*sizeof(double));
 
+    zMin = xyValues[0];
+    zMax = xyValues[0];
 
+    for (int i = 0; i<(nValuesX * nValuesY); i++)
+    {
+        if (xyValues[i] < zMin) zMin = xyValues[i];
+        if (xyValues[i] > zMax) zMax = xyValues[i];
+    }
+}
+
+double SpilineInterpolate3D::getXValue(int index) const
+{
+    return xValues[index];
+}
+
+double SpilineInterpolate3D::getYValue(int index) const
+{
+    return yValues[index];
 }
 
 SpilineInterpolate3D::~SpilineInterpolate3D()

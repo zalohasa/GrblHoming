@@ -756,7 +756,7 @@ void GCodeMarlin::sendFile(QString path)
                 if (strline.size() != 0)
                 {
 
-                    if (interpolator != NULL)
+                    if (controlParams.useZLevelingData && interpolator != NULL)
                     {
                         //We need to change the Z value using the interpolator
                         strline = levelLine(strline);
@@ -1064,6 +1064,7 @@ QString GCodeMarlin::levelLine(const QString &command)
          double delta = 0;
          interpolator->bicubicInterpolate(lastX, lastY, delta);
          targetZ += delta;
+         targetZ -= controlParams.zLevelingOffset;
 
          std::cout << "GCodeMarlin::levelLine - Line interpolated data: X: " << lastX << " Y:" << lastY << " Z:" << targetZ << std::endl;
 
@@ -1851,11 +1852,12 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
     double * zValues = new double[xSteps * ySteps];
 
     cout << __FUNCTION__ << " - right: " << extent.right() << " left: " << extent.left() << endl;
+    cout << __FUNCTION__ << " - bottom: " << extent.bottom() << " top: " << extent.top() << endl;
 
     double xLenght = extent.right() - extent.left();
-    double yLenght = extent.bottom() - extent.top();
+    double yLenght = extent.top() - extent.bottom();
 
-    cout << __FUNCTION__ << " - xLenght: " <<xLenght << "ylen: " << yLenght << endl;
+    cout << __FUNCTION__ << " - xLenght: " <<xLenght << " ylen: " << yLenght << endl;
 
     double xInterval = xLenght / (xSteps - 1);
     double yInterval = yLenght / (ySteps - 1);
@@ -1990,4 +1992,9 @@ void GCodeMarlin::clearLevelingData()
         delete interpolator;
         interpolator = NULL;
     }
+}
+
+SpilineInterpolate3D * GCodeMarlin::getInterpolator()
+{
+    return interpolator;
 }

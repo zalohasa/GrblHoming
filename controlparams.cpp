@@ -9,6 +9,6 @@ ControlParams::ControlParams()
             useFourAxis(false), charSendDelayMs(DEFAULT_CHAR_SEND_DELAY_MS),
             fourthAxisType(FOURTH_AXIS_A), usePositionRequest(true),
             positionRequestType(PREQ_ALWAYS_NO_IDLE_CHK), postionRequestTimeMilliSec(DEFAULT_POS_REQ_FREQ_MSEC),
-            waitForJogToComplete(true), useZLevelingData(false)
+            waitForJogToComplete(true), useZLevelingData(false), zLevelingOffset(0)
 {
 }

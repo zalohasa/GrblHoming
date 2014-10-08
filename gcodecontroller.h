@@ -9,6 +9,7 @@
 #include "rs232.h"
 #include "coord3d.h"
 #include "controlparams.h"
+#include "SpilineInterpolate3D.h"
 
 class CmdResponse
 {
@@ -50,6 +51,7 @@ public:
     void setShutdown();
     int getSettingsItemCount();
     int getNumaxis();
+
 
     static void trimToEnd(QString& strline, QChar);
 
@@ -95,6 +97,7 @@ public slots:
     virtual void goToHome() = 0;
     virtual bool isZInterpolatorReady() = 0;
     virtual void clearLevelingData() = 0;
+    virtual SpilineInterpolate3D * getInterpolator() = 0;
 
 protected:
     enum PosReqStatus
