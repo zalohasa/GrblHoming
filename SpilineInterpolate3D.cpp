@@ -21,12 +21,16 @@ SpilineInterpolate3D::SpilineInterpolate3D(const double * xValues, unsigned int 
 
     zMin = xyValues[0];
     zMax = xyValues[0];
+    median = 0;
 
     for (int i = 0; i<(nValuesX * nValuesY); i++)
     {
         if (xyValues[i] < zMin) zMin = xyValues[i];
         if (xyValues[i] > zMax) zMax = xyValues[i];
+        median += xyValues[i];
     }
+
+    median /= nValuesX*nValuesY;
 }
 
 double SpilineInterpolate3D::getXValue(int index) const

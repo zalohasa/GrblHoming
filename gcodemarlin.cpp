@@ -1973,11 +1973,11 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
     {
         interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues);
     }
+
+    levelingEnded();
     //Return to 0.0
     sendGcodeLocal("G28 Z0\r");
     sendGcodeLocal(QString("G0 X0 Y0 F").append(QString::number(speed)).append("\r"));
-    levelingEnded();
-
 }
 
 bool GCodeMarlin::isZInterpolatorReady()

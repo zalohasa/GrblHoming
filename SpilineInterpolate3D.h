@@ -19,6 +19,8 @@ public:
     double getMaxZValue() const{ return zMax; }
     double getMinZValue() const{ return zMin; }
 
+    double getMedian() const{ return median; }
+
 
 protected:
     static double cubicInterpolate(const double p[], double x);
@@ -29,6 +31,7 @@ protected:
     double *  xyValues;
     double zMin;
     double zMax;
+    double median;
     unsigned int nValuesX;
     unsigned int nValuesY;
 };

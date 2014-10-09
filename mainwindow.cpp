@@ -519,6 +519,7 @@ void MainWindow::clearLevelingData()
 
 void MainWindow::testLeveling()
 {
+    ui->levelingRenderArea->setInterpolator(NULL);
     ui->btnTestLeveling->setEnabled(false);
     ui->levelingUseData->setEnabled(false);
     ui->btnClearLeveling->setEnabled(false);

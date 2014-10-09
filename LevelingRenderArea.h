@@ -17,13 +17,12 @@ public:
     LevelingRenderArea(QWidget *parent = 0);
 
     QSize minimumSizeHint() const;
-    /*QSize sizeHint() const;*/
+    QSize sizeHint() const;
 
 public slots:
     void setInterpolator(SpilineInterpolate3D *interpolator);
 
 protected:
-    void recalculatePoints(unsigned int width, unsigned int height);
     void paintEvent(QPaintEvent * event);
 //    void mousePressEvent(QMouseEvent * mouseEvent);
     SpilineInterpolate3D * interpolator;
