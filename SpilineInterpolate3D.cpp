@@ -5,11 +5,12 @@
 using std::cout;
 using std::endl;
 
-SpilineInterpolate3D::SpilineInterpolate3D(const double * xValues, unsigned int xCount, const double * yValues, unsigned int yCount, const double * xyValues)
+SpilineInterpolate3D::SpilineInterpolate3D(const double * xValues, unsigned int xCount, const double * yValues, unsigned int yCount, const double * xyValues, double offset)
 {
 
     nValuesX = xCount;
     nValuesY = yCount;
+    initialOffset = offset;
 
     this->xValues = new double[nValuesX];
     this->yValues = new double[nValuesY];
@@ -23,7 +24,7 @@ SpilineInterpolate3D::SpilineInterpolate3D(const double * xValues, unsigned int 
     zMax = xyValues[0];
     median = 0;
 
-    for (int i = 0; i<(nValuesX * nValuesY); i++)
+    for (unsigned int i = 0; i<(nValuesX * nValuesY); i++)
     {
         if (xyValues[i] < zMin) zMin = xyValues[i];
         if (xyValues[i] > zMax) zMax = xyValues[i];
@@ -33,14 +34,28 @@ SpilineInterpolate3D::SpilineInterpolate3D(const double * xValues, unsigned int 
     median /= nValuesX*nValuesY;
 }
 
-double SpilineInterpolate3D::getXValue(int index) const
+SpilineInterpolate3D::SpilineInterpolate3D(const Interpolator *interpolator)
 {
-    return xValues[index];
-}
+    if (interpolator == NULL)
+    {
+        return;
+    }
 
-double SpilineInterpolate3D::getYValue(int index) const
-{
-    return yValues[index];
+    nValuesX = interpolator->getXSteps();
+    nValuesY = interpolator->getYSteps();
+    initialOffset = interpolator->getInitialOffset();
+
+    this->xValues = new double[nValuesX];
+    this->yValues = new double[nValuesY];
+    this->xyValues = new double[nValuesX * nValuesY];
+
+    memcpy(this->xValues, interpolator->getXValues(), nValuesX*sizeof(double));
+    memcpy(this->yValues, interpolator->getYValues(), nValuesY*sizeof(double));
+    memcpy(this->xyValues, interpolator->getXYValues(), nValuesX*nValuesY*sizeof(double));
+
+    zMin = interpolator->getMinZValue();
+    zMax = interpolator->getMaxZValue();
+    median = interpolator->getMedian();
 }
 
 SpilineInterpolate3D::~SpilineInterpolate3D()
@@ -64,8 +79,21 @@ SpilineInterpolate3D::~SpilineInterpolate3D()
     }
 }
 
-bool SpilineInterpolate3D::findCoeficents(const double * values, unsigned int nValues, double x, unsigned int & a, unsigned int & b, unsigned int & c, unsigned int & d)
+bool SpilineInterpolate3D::findCoeficents(const double * values, unsigned int nValues, double x, unsigned int & a, unsigned int & b, unsigned int & c, unsigned int & d) const
 {
+
+    //Check if the x is out of the area.
+    if (x < values[0]) {
+        b = 0;
+        return true; //Exact match
+    }
+
+    if (x > values[nValues-1]){
+        b = nValues - 1;
+        return true; //Exact match
+    }
+
+    //If the x is inside the area, find the coeficents.
     for (int j = 0; j < nValues; j++)
     {
         //search the coeficents.
@@ -101,14 +129,8 @@ bool SpilineInterpolate3D::findCoeficents(const double * values, unsigned int nV
 
 }
 
-double SpilineInterpolate3D::normaliceValue(double min, double max, double value)
+bool SpilineInterpolate3D::interpolate(double x, double y, double & res) const
 {
-    return (value - min) / (max - min);
-}
-
-bool SpilineInterpolate3D::bicubicInterpolate(double x, double y, double & res)
-{
-    //cout << "Interpolating value for: " << x << endl;
     unsigned int ax = 0, bx = 0, cx = 0, dx = 0;
     unsigned int ay = 0, by = 0, cy = 0, dy = 0;
 
@@ -170,7 +192,7 @@ bool SpilineInterpolate3D::bicubicInterpolate(double x, double y, double & res)
     return false;
 }
 
-double SpilineInterpolate3D::cubicInterpolate (const double p[], double x) {
+double SpilineInterpolate3D::cubicInterpolate (const double p[], double x) const {
     return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
 }
 

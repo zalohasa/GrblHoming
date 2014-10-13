@@ -1,7 +1,7 @@
 #ifndef LEVELING_RENDERAREA_H
 #define LEVELING_RENDERAREA_H
 
-#include "SpilineInterpolate3D.h"
+#include "interpolator.h"
 
 #include <QBrush>
 #include <QPen>
@@ -20,12 +20,12 @@ public:
     QSize sizeHint() const;
 
 public slots:
-    void setInterpolator(SpilineInterpolate3D *interpolator);
+    void setInterpolator(const Interpolator *interpolator);
 
 protected:
     void paintEvent(QPaintEvent * event);
 //    void mousePressEvent(QMouseEvent * mouseEvent);
-    SpilineInterpolate3D * interpolator;
+    const Interpolator * interpolator;
     double * xValues;
     double * yValues;
     double * xyValues;
@@ -36,7 +36,25 @@ protected:
     bool forceReload;
 
 private:
+
+    /**
+     * @brief remap Remaps a value in the range from low1 to high1 to a range from low2 to high2
+     * @param value Value to be remapped
+     * @param low1 Low end of the original range
+     * @param high1 High end of the original range
+     * @param low2 Low end of the target range
+     * @param high2 High end of the target range.
+     * @return remapped value.
+     */
     double remap(double value, double low1, double high1, double low2, double high2);
+
+    /**
+     * @brief remap Remaps a value in the range from 0 to hight1 to a range from 0 to high2
+     * @param value Value to be remapped
+     * @param high1 High end of the original range.
+     * @param high2 High end of the target range.
+     * @return
+     */
     double remap(double value, double high1, double high2);
 };
 

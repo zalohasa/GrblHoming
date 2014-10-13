@@ -9,7 +9,7 @@
 #include "rs232.h"
 #include "coord3d.h"
 #include "controlparams.h"
-#include "SpilineInterpolate3D.h"
+#include "interpolator.h"
 
 class CmdResponse
 {
@@ -80,6 +80,7 @@ signals:
     void setVisualLivenessCurrPos(bool isLiveCP);
     void levelingProgress(int);
     void levelingEnded();
+    void recomputeOffsetEnded(double);
 
 public slots:
     virtual void openPort(QString commPortStr, QString baudRate) = 0;
@@ -93,11 +94,13 @@ public slots:
     virtual void controllerSetHome() = 0;
     virtual void sendControllerReset() = 0;
     virtual void sendControllerUnlock() = 0;
-    virtual void performZLeveling(QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zSafe) = 0;
+    virtual void performZLeveling(int levelingAlgorithm, QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zSafe, double offset) = 0;
     virtual void goToHome() = 0;
     virtual bool isZInterpolatorReady() = 0;
     virtual void clearLevelingData() = 0;
-    virtual SpilineInterpolate3D * getInterpolator() = 0;
+    virtual const Interpolator * getInterpolator() = 0;
+    virtual void changeInterpolator(int index) = 0;
+    virtual void recomputeOffset(double speed, double zStarting) = 0;
 
 protected:
     enum PosReqStatus

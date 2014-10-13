@@ -73,6 +73,7 @@ signals:
     void setVisualLivenessCurrPos(bool isLiveCP);
     void levelingProgress(int);
     void levelingEnded();
+    void recomputeOffsetEnded(double);
 
 public slots:
     void openPort(QString commPortStr, QString baudRate);
@@ -85,11 +86,13 @@ public slots:
     void controllerSetHome();
     void sendControllerReset();
     void sendControllerUnlock();
-    void performZLeveling(QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zSafe);
+    void performZLeveling(int levelingAlgorithm, QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zSafe, double offset);
     void goToHome();
     bool isZInterpolatorReady();
     void clearLevelingData();
-    SpilineInterpolate3D * getInterpolator(){ return NULL;}
+    const Interpolator * getInterpolator(){ return NULL;} //TODO implement
+    void changeInterpolator(int index) {}//TODO implement
+    void recomputeOffset(double speed, double zStarting) {}
 
 protected:
     void timerEvent(QTimerEvent *event);

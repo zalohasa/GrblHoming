@@ -112,7 +112,9 @@ signals:
     void sendGrblUnlock();
     void goToHome();
     void setItems(QList<PosItem>);
-    void doTestLeveling(QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zHeight);
+    void doTestLeveling(int levelingAlgorithm, QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zHeight, double offset);
+    void changeInterpolator(int index);
+    void doRecomputeOffset(double speed, double zStarting);
 
 private slots:
     //buttons
@@ -176,6 +178,9 @@ private slots:
     void setLevelingEnded();
     void useZLevelingDataToggle(bool checked);
     void clearLevelingData();
+    void levelingAlgorithmChanged(int);
+    void recomputeOffset();
+    void recomputeOffsetEnded(double newOffset);
 
 
 private:

@@ -35,7 +35,10 @@ SOURCES += main.cpp\
     gcodecontroller.cpp \
     gcodegrbl.cpp \
     gcodemarlin.cpp \
-    SpilineInterpolate3D.cpp
+    SpilineInterpolate3D.cpp \
+    LinearInterpolate3D.cpp \
+    SingleInterpolate.cpp \
+    interpolator.cpp
 
 
 HEADERS  += mainwindow.h \
@@ -63,7 +66,10 @@ HEADERS  += mainwindow.h \
     gcodecontroller.h \
     gcodegrbl.h \
     gcodemarlin.h \
-    SpilineInterpolate3D.h
+    SpilineInterpolate3D.h \
+    interpolator.h \
+    LinearInterpolate3D.h \
+    SingleInterpolate.h
 
 FORMS    += mainwindow.ui \
     options.ui \

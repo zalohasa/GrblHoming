@@ -78,6 +78,11 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->levelingUseData->setEnabled(false);
     ui->btnCancelLeveling->setEnabled(false);
     ui->btnClearLeveling->setEnabled(false);
+    ui->btnRecomputeOffset->setEnabled(false);
+
+    ui->levelingComboBox->addItem(QString("Bicubic Spiline"), Interpolator::SPILINE);
+    ui->levelingComboBox->addItem(QString("Linear"), Interpolator::LINEAR);
+    ui->levelingComboBox->addItem(QString("Single touch"), Interpolator::SINGLE);
 
     if (!controlParams.useFourAxis)
     {
@@ -119,6 +124,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->btnTestLeveling, SIGNAL(clicked()), this, SLOT(testLeveling()));
     connect(ui->btnCancelLeveling, SIGNAL(clicked()), this, SLOT(stopLeveling()));
     connect(ui->btnClearLeveling, SIGNAL(clicked()), this, SLOT(clearLevelingData()));
+    connect(ui->btnRecomputeOffset, SIGNAL(clicked()), this, SLOT(recomputeOffset()));
     connect(ui->btnClearStatusList, SIGNAL(clicked()), ui->statusList, SLOT(clear()));
     connect(ui->verticalSliderZJog,SIGNAL(valueChanged(int)),this,SLOT(zJogSliderDisplay(int)));
     connect(ui->verticalSliderZJog,SIGNAL(sliderPressed()),this,SLOT(zJogSliderPressed()));
@@ -127,6 +133,8 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->comboStep,SIGNAL(currentIndexChanged(QString)),this,SLOT(comboStepChanged(QString)));
     connect(ui->levelingUseData, SIGNAL(toggled(bool)), this, SLOT(useZLevelingDataToggle(bool)));
     connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
+
+    connect(ui->levelingComboBox, SIGNAL(activated(int)), this, SLOT(levelingAlgorithmChanged(int)));
 
     connect(&runtimeTimer, SIGNAL(setRuntime(QString)), ui->outputRuntime, SLOT(setText(QString)));
 
@@ -290,9 +298,11 @@ void MainWindow::createGcodeConnects()
     connect(this, SIGNAL(sendGrblReset()), gcode, SLOT(sendControllerReset()));
     connect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     connect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
-    connect(this, SIGNAL(doTestLeveling(QRect, int, int, double, double, double)), gcode, SLOT(performZLeveling(QRect,int,int,double, double, double)));
+    connect(this, SIGNAL(doTestLeveling(int, QRect, int, int, double, double, double, double)), gcode, SLOT(performZLeveling(int, QRect,int,int,double, double, double, double)));
     connect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
     connect(ui->btnClearLeveling, SIGNAL(clicked()), gcode, SLOT(clearLevelingData()));
+    connect(this, SIGNAL(changeInterpolator(int)), gcode, SLOT(changeInterpolator(int)));
+    connect(this, SIGNAL(doRecomputeOffset(double,double)), gcode, SLOT(recomputeOffset(double,double)));
 
     connect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     connect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -317,6 +327,7 @@ void MainWindow::createGcodeConnects()
     connect(gcode, SIGNAL(setLcdState(bool)), this, SLOT(setLcdState(bool)));
     connect(gcode, SIGNAL(levelingProgress(int)), this, SLOT(setLevelingProgress(int)));
     connect(gcode, SIGNAL(levelingEnded()), this, SLOT(setLevelingEnded()));
+    connect(gcode, SIGNAL(recomputeOffsetEnded(double)), this, SLOT(recomputeOffsetEnded(double)));
 
 
 }
@@ -339,9 +350,11 @@ void MainWindow::deleteGcodeConnects()
     disconnect(this, SIGNAL(sendGrblReset()), gcode, SLOT(sendControllerReset()));
     disconnect(this, SIGNAL(sendGrblUnlock()), gcode, SLOT(sendControllerUnlock()));
     disconnect(this, SIGNAL(goToHome()), gcode, SLOT(goToHome()));
-    disconnect(this, SIGNAL(doTestLeveling(QRect, int, int, double, double, double)), gcode, SLOT(performZLeveling(QRect,int,int,double, double, double)));
+    disconnect(this, SIGNAL(doTestLeveling(QRect, int, int, double, double, double, double)), gcode, SLOT(performZLeveling(QRect,int,int,double, double, double, double)));
     disconnect(this, SIGNAL(setItems(QList<PosItem>)), ui->wgtVisualizer, SLOT(setItems(QList<PosItem>)));
     disconnect(ui->btnClearLeveling, SIGNAL(clicked()), gcode, SLOT(clearLevelingData()));
+    disconnect(this, SIGNAL(changeInterpolator(int)), gcode, SLOT(changeInterpolator(int)));
+    disconnect(this, SIGNAL(doRecomputeOffset(double,double)), gcode, SLOT(recomputeOffset(double,double)));
 
     disconnect(gcode, SIGNAL(sendMsg(QString)),this,SLOT(receiveMsg(QString)));
     disconnect(gcode, SIGNAL(portIsClosed(bool)), this, SLOT(portIsClosed(bool)));
@@ -366,6 +379,7 @@ void MainWindow::deleteGcodeConnects()
     disconnect(gcode, SIGNAL(setLcdState(bool)), this, SLOT(setLcdState(bool)));
     disconnect(gcode, SIGNAL(levelingProgress(int)), this, SLOT(setLevelingProgress(int)));
     disconnect(gcode, SIGNAL(levelingEnded()), this, SLOT(setLevelingEnded()));
+    disconnect(gcode, SIGNAL(recomputeOffsetEnded(double)), this, SLOT(recomputeOffsetEnded(double)));
 
 }
 
@@ -483,16 +497,50 @@ void MainWindow::setLevelingEnded()
     if (gcode->isZInterpolatorReady())
     {
         ui->btnClearLeveling->setEnabled(true);
+        ui->btnRecomputeOffset->setEnabled(true);
         ui->levelingUseData->setChecked(true);
         ui->levelingUseData->setEnabled(true);
         controlParams.useZLevelingData = true;
         ui->levelingRenderArea->setInterpolator(gcode->getInterpolator());
+
+        int levelingAlgorithm = gcode->getInterpolator()->getType();
+        if (levelingAlgorithm == Interpolator::SINGLE)
+        {
+            ui->levelingComboBox->setDisabled(true);
+        } else {
+            ui->levelingComboBox->setEnabled(true);
+            int index = ui->levelingComboBox->findData(Interpolator::SINGLE);
+            ui->levelingComboBox->removeItem(index);
+        }
     } else {
+        //Recreate the combo and populate it.
+        int levelingAlgorithm = ui->levelingComboBox->itemData(ui->levelingComboBox->currentIndex()).toInt();
+        ui->levelingComboBox->setEnabled(true);
+        ui->levelingComboBox->clear();
+        ui->levelingComboBox->addItem(QString("Bicubic Spiline"), Interpolator::SPILINE);
+        ui->levelingComboBox->addItem(QString("Linear"), Interpolator::LINEAR);
+        ui->levelingComboBox->addItem(QString("Single touch"), Interpolator::SINGLE);
+        if (levelingAlgorithm == Interpolator::SPILINE)
+        {
+            ui->levelingComboBox->setCurrentIndex(0);
+        } else if (levelingAlgorithm == Interpolator::LINEAR)
+        {
+            ui->levelingComboBox->setCurrentIndex(1);
+        } else if (levelingAlgorithm == Interpolator::SINGLE)
+        {
+            ui->levelingComboBox->setCurrentIndex(2);
+        }
+
         ui->btnClearLeveling->setEnabled(false);
+        ui->btnRecomputeOffset->setEnabled(false);
         ui->levelingUseData->setChecked(false);
         ui->levelingUseData->setEnabled(false);
         controlParams.useZLevelingData = false;
         ui->levelingRenderArea->setInterpolator(NULL);
+        ui->levelingComboBox->clear();
+        ui->levelingComboBox->addItem(QString("Bicubic Spiline"), Interpolator::SPILINE);
+        ui->levelingComboBox->addItem(QString("Linear"), Interpolator::LINEAR);
+        ui->levelingComboBox->addItem(QString("Single touch"), Interpolator::SINGLE);
     }
 
     emit setResponseWait(controlParams);
@@ -508,13 +556,57 @@ void MainWindow::useZLevelingDataToggle(bool checked)
     controlParams.useZLevelingData = checked;
 }
 
+
+void MainWindow::levelingAlgorithmChanged(int index)
+{
+    int inter = ui->levelingComboBox->itemData(index).toInt();
+
+    if (inter == Interpolator::SINGLE)
+    {
+        ui->levelingXSizeIn->setEnabled(false);
+        ui->levelingYSizeIn->setEnabled(false);
+        ui->levelingXStepIn->setEnabled(false);
+        ui->levelingYStepsIn->setEnabled(false);
+        ui->levelingSpeedIn->setEnabled(false);
+        ui->levelingZSafeIn->setEnabled(false);
+    } else {
+        ui->levelingXSizeIn->setEnabled(true);
+        ui->levelingYSizeIn->setEnabled(true);
+        ui->levelingXStepIn->setEnabled(true);
+        ui->levelingYStepsIn->setEnabled(true);
+        ui->levelingSpeedIn->setEnabled(true);
+        ui->levelingZSafeIn->setEnabled(true);
+    }
+
+    //TODO show a message asking for confirmation.
+    if (gcode->isZInterpolatorReady() && gcode->getInterpolator()->getType() != inter)
+    {
+        ui->levelingRenderArea->setInterpolator(NULL);
+        emit changeInterpolator(inter);
+    }
+}
+
 void MainWindow::clearLevelingData()
 {
+    ui->levelingOffsetIn->setText("0");
     ui->btnClearLeveling->setEnabled(false);
     ui->levelingUseData->setChecked(false);
     ui->levelingUseData->setEnabled(false);
+    ui->btnRecomputeOffset->setEnabled(false);
     controlParams.useZLevelingData = false;
     ui->levelingRenderArea->setInterpolator(NULL);
+    ui->levelingComboBox->setEnabled(true);
+    ui->levelingComboBox->clear();
+    ui->levelingComboBox->addItem(QString("Bicubic Spiline"), Interpolator::SPILINE);
+    ui->levelingComboBox->addItem(QString("Linear"), Interpolator::LINEAR);
+    ui->levelingComboBox->addItem(QString("Single touch"), Interpolator::SINGLE);
+
+    ui->levelingXSizeIn->setEnabled(true);
+    ui->levelingYSizeIn->setEnabled(true);
+    ui->levelingXStepIn->setEnabled(true);
+    ui->levelingYStepsIn->setEnabled(true);
+    ui->levelingSpeedIn->setEnabled(true);
+    ui->levelingZSafeIn->setEnabled(true);
 }
 
 void MainWindow::testLeveling()
@@ -524,6 +616,10 @@ void MainWindow::testLeveling()
     ui->levelingUseData->setEnabled(false);
     ui->btnClearLeveling->setEnabled(false);
     ui->btnCancelLeveling->setEnabled(true);
+    ui->btnRecomputeOffset->setEnabled(false);
+    ui->levelingComboBox->setEnabled(false);
+
+    int levelingAlgorithm = ui->levelingComboBox->itemData(ui->levelingComboBox->currentIndex()).toInt();
 
     bool ok, everythingOk = true;
     int xExt = ui->levelingXSizeIn->text().toInt(&ok);
@@ -543,10 +639,21 @@ void MainWindow::testLeveling()
     double offset = ui->levelingOffsetIn->text().toDouble(&ok);
     everythingOk &= ok;
 
+    //If the leveling algorithm is the single, we set almost all the values here.
+    if (levelingAlgorithm == Interpolator::SINGLE)
+    {
+        xExt = 30;
+        yExt = 30;
+        xStep = 1;
+        yStep = 1;
+        zSafe = 1;
+        speed = 300;
+    }
+
     //TODO show a warning dialog if the conversions went wrong, and don't emit the signal, so the user can correct the data.
 
     ui->levelingProgressBar->setMinimum(0);
-    ui->levelingProgressBar->setMaximum((xStep*yStep)+1);
+    ui->levelingProgressBar->setMaximum((xStep*yStep));
     ui->levelingProgressBar->setValue(0);
     ui->levelingProgressBar->setVisible(true);
 
@@ -558,7 +665,27 @@ void MainWindow::testLeveling()
 
     controlParams.zLevelingOffset = offset;
 
-    emit doTestLeveling(ext, xStep, yStep, zStarting, speed, zSafe);
+    emit doTestLeveling(levelingAlgorithm, ext, xStep, yStep, zStarting, speed, zSafe, offset);
+}
+
+void MainWindow::recomputeOffsetEnded(double newOffset)
+{
+    ui->levelingOffsetIn->setText(QString::number(newOffset));
+    ui->btnRecomputeOffset->setEnabled(true);
+    controlParams.zLevelingOffset = newOffset;
+    emit setResponseWait(controlParams);
+}
+
+void MainWindow::recomputeOffset()
+{
+    ui->btnRecomputeOffset->setEnabled(false);
+    bool ok, everythingOk = true;
+    double zStarting = ui->levelingZStartIn->text().toDouble(&ok);
+    everythingOk &= ok;
+    double speed = ui->levelingSpeedIn->text().toDouble(&ok);
+    everythingOk &= ok;
+
+    emit doRecomputeOffset(speed, zStarting);
 }
 
 // slot called from GCode class to update our state
@@ -1813,3 +1940,4 @@ void MainWindow::comboStepChanged(const QString& text)
     jogStepStr = text;
     jogStep = jogStepStr.toFloat();
 }
+

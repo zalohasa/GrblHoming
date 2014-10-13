@@ -37,6 +37,14 @@
  * Declarations
  ******************************************************************************/
 
+#ifdef ABSOLUTE
+#undef ABSOLUTER
+#endif
+
+#ifdef RELATIVE
+#undef RELATIVE
+#endif
+
 namespace Log4Qt
 {
 	

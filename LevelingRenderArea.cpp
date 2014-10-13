@@ -23,10 +23,6 @@ LevelingRenderArea::LevelingRenderArea(QWidget *parent)
     xValues = NULL;
     yValues = NULL;
     xyValues = NULL;
-    //recalculatePoints(100, 100);
-
-
-
 }
 
 QSize LevelingRenderArea::minimumSizeHint() const
@@ -48,7 +44,7 @@ QSize LevelingRenderArea::sizeHint() const
 //    }
 //}
 
-void LevelingRenderArea::setInterpolator(SpilineInterpolate3D *interpolator)
+void LevelingRenderArea::setInterpolator(const Interpolator *interpolator)
 {
     this->interpolator = interpolator;
     this->update();
@@ -66,6 +62,11 @@ void LevelingRenderArea::paintEvent(QPaintEvent * /* event */)
         return;
     }
 
+    if (interpolator->getType() == Interpolator::SINGLE)
+    {
+        return;
+    }
+
     std::cout << "Minimal Z: " << interpolator->getMinZValue() << " - Maximal Z: " << interpolator->getMaxZValue() << std::endl;
 
     for (int i = 6; i <= viewport.right()-6; i++)
@@ -79,7 +80,7 @@ void LevelingRenderArea::paintEvent(QPaintEvent * /* event */)
             double remappedJ = remap(double(viewport.bottom()-j), 6, viewport.bottom()-6, 0, interpolator->getYValue(interpolator->getYSteps() - 1));
 
             //Create a gradient with the three colors that will represent the height.
-            QLinearGradient gr(QPointF(0,0), QPointF(1003,0));
+            QLinearGradient gr(QPointF(0,0), QPointF(1005,0));
             gr.setColorAt(0, QColor(255,0,0));
 
             //Get the median of all the zprobes, so the predominant color is the central one.
@@ -89,12 +90,12 @@ void LevelingRenderArea::paintEvent(QPaintEvent * /* event */)
             gr.setColorAt(median, QColor(0, 255, 0));
             gr.setColorAt(1, QColor(0, 0, 255));
 
-            QImage img(1003, 1, QImage::Format_RGB32);
+            QImage img(1005, 1, QImage::Format_RGB32);
             QPainter p(&img);
             p.fillRect(img.rect(), gr);
 
             //Do the interpolation
-            interpolator->bicubicInterpolate(remappedI, remappedJ, yVal);
+            interpolator->interpolate(remappedI, remappedJ, yVal);
 
             double yValRemapped = remap(yVal, interpolator->getMinZValue(), interpolator->getMaxZValue(), 3, 1000);
 //            std::cout << "Original i: " << i << " RemappedI = " << remappedI << " - Original J: "
@@ -110,9 +111,9 @@ void LevelingRenderArea::paintEvent(QPaintEvent * /* event */)
 
     //Draw the test points
     painter.setPen(QPen(Qt::black, 1));
-    for (int i = 0; i<interpolator->getXSteps(); i++)
+    for (unsigned int i = 0; i<interpolator->getXSteps(); i++)
     {
-        for (int j = 0; j<interpolator->getYSteps(); j++)
+        for (unsigned int j = 0; j<interpolator->getYSteps(); j++)
         {
             int x = remap(interpolator->getXValue(i), 0, interpolator->getXValue(interpolator->getXSteps() - 1), 6, viewport.right() - 6);
             int y = remap(interpolator->getYValue(j), 0, interpolator->getYValue(interpolator->getYSteps() - 1), 6, viewport.bottom() - 6);
@@ -123,13 +124,13 @@ void LevelingRenderArea::paintEvent(QPaintEvent * /* event */)
     //Draw the grid lines.
     painter.setPen(QPen(Qt::black, 1, Qt::DashLine));
 
-    for (int i = 0; i<interpolator->getXSteps(); i++)
+    for (unsigned int i = 0; i<interpolator->getXSteps(); i++)
     {
         int x = remap(interpolator->getXValue(i), 0, interpolator->getXValue(interpolator->getXSteps() - 1), 6, viewport.right() - 6);
         painter.drawLine(QPoint(x, 0), QPoint(x, viewport.bottom()));
 
     }
-    for (int j = 0; j<interpolator->getYSteps(); j++)
+    for (unsigned int j = 0; j<interpolator->getYSteps(); j++)
     {
         int y = remap(interpolator->getYValue(j), 0, interpolator->getYValue(interpolator->getYSteps() - 1), 6, viewport.bottom() - 6);
         painter.drawLine(QPoint(0, y), QPoint(viewport.right(), y));

@@ -10,6 +10,10 @@
 
 #include "gcodemarlin.h"
 
+#include "SpilineInterpolate3D.h"
+#include "LinearInterpolate3D.h"
+#include "SingleInterpolate.h"
+
 #include <QObject>
 #include <iostream>
 
@@ -21,9 +25,9 @@ GCodeMarlin::GCodeMarlin()
       incorrectMeasurementUnits(false), incorrectLcdDisplayUnits(false),
       maxZ(0), motionOccurred(false),
       sliderZCount(0),
-      numaxis(DEFAULT_AXIS_COUNT),
       manualFeedSetted(false),
-      interpolator(NULL)
+      interpolator(NULL),
+      numaxis(DEFAULT_AXIS_COUNT)
 {
     // use base class's timer - use it to capture random text from the controller
     startTimer(1000);
@@ -394,7 +398,7 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
             }
         } else {
             //Limit CPU usage while waiting for data.
-            usleep(4000);
+            QThread::usleep(4000);
         }
 
 
@@ -1062,7 +1066,7 @@ QString GCodeMarlin::levelLine(const QString &command)
 
          double targetZ = lastZ;
          double delta = 0;
-         interpolator->bicubicInterpolate(lastX, lastY, delta);
+         interpolator->interpolate(lastX, lastY, delta);
          targetZ += delta;
          targetZ -= controlParams.zLevelingOffset;
 
@@ -1837,7 +1841,38 @@ bool GCodeMarlin::probeResultToValue(const QString & result, double &zCoord)
 
 }
 
-void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double zStarting, double speed, double zSafe)
+
+void GCodeMarlin::recomputeOffset(double speed, double zStarting)
+{
+    cout << __FUNCTION__ << " - Recalculating offset" << endl;
+    if (interpolator == NULL)
+    {
+        return;
+    }
+    sendGcodeLocal("G28 Z0\r");
+    sendGcodeLocal(QString("G0 X0 Y0 F").append(QString::number(speed)).append("\r"));
+
+    //Get the first ZDepth in the 0,0 coordinate.
+    QString res;
+    double zCoord = 0.0d;
+    //Goto to Z starting point
+    sendGcodeInternal(QString("G0 Z").append(QString::number(zStarting)).append(" F200"), res, false, 0);
+
+
+    sendGcodeInternal("G30", res, false, 0);
+    cout << __FUNCTION__ << " - Result: " << res.toStdString() << endl;
+
+    if (!probeResultToValue(res, zCoord))
+    {
+        cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE" << endl;
+        return;
+    }
+
+    emit recomputeOffsetEnded(interpolator->calculateOffset(zCoord));
+    sendGcodeLocal("G28 Z0\r");
+}
+
+void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSteps, int ySteps, double zStarting, double speed, double zSafe, double offset)
 {
     cout << __FUNCTION__ << " - Starting Z Leveling procedure" << endl;
     abortState.set(false);
@@ -1859,8 +1894,14 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
 
     cout << __FUNCTION__ << " - xLenght: " <<xLenght << " ylen: " << yLenght << endl;
 
-    double xInterval = xLenght / (xSteps - 1);
-    double yInterval = yLenght / (ySteps - 1);
+    double xInterval = xLenght;
+    double yInterval = yLenght;
+    if (xSteps > 1){
+        xInterval = xLenght / (xSteps - 1);
+    }
+    if (ySteps > 1){
+        yInterval = yLenght / (ySteps - 1);
+    }
 
     cout << __FUNCTION__ << " - xInterval: " << xInterval << " yInterval: " << yInterval << endl;
 
@@ -1875,7 +1916,6 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
     }
 
     //We do not have to home XY here, and we assume that the coordinates X0 and Y0 are already setted as the good starting point for the leveling.
-    //TODO Load the F speed for G0 commands
     sendGcodeLocal("G90\r");
     sendGcodeLocal("G28 Z0\r");
     sendGcodeLocal(QString("G0 X0 Y0 F").append(QString::number(speed)).append("\r"));
@@ -1887,24 +1927,9 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
     //Goto to Z starting point
     sendGcodeInternal(QString("G0 Z").append(QString::number(zStarting)).append(" F200"), res, false, 0);
 
-
-    sendGcodeInternal("G30", res, false, 0);
-    cout << __FUNCTION__ << " - Result: " << res.toStdString() << endl;
-
-    if (!probeResultToValue(res, zCoord))
-    {
-        cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE" << endl;
-        return;
-    }
-
-    double zSafeCoord = zCoord + zSafe;
-    cout << __FUNCTION__ << " - Safe coordinate: " << zSafeCoord << endl;
-    sendGcodeLocal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100\r"));
-
+    double zSafeCoord = 0;
 
     pollPosWaitForIdle();
-    progress++;
-    levelingProgress(progress);
 
     for (int i = 0; i < xSteps; i++)
     {
@@ -1971,10 +1996,21 @@ void GCodeMarlin::performZLeveling(QRect extent, int xSteps, int ySteps, double 
 
     if (!abortState.get())
     {
-        interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues);
+        if (levelingAlgorithm == Interpolator::SPILINE){
+            cout << __FUNCTION__ << "Creating spiline interpolator" << endl;
+            interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues, offset);
+        }  else if (levelingAlgorithm == Interpolator::LINEAR){
+            cout << __FUNCTION__ << "Creating linear interpolator" << endl;
+            interpolator = new LinearInterpolate3D(xValues, xSteps, yValues, ySteps, zValues, offset);
+        } else if (levelingAlgorithm == Interpolator::SINGLE){
+            cout << __FUNCTION__ << "Creating single touch interpolator" << endl;
+            interpolator = new SingleInterpolate(xValues[0], yValues[0], zValues[0], offset);
+        } else {
+            //TODO, Wrong interpolator selected.
+        }
     }
 
-    levelingEnded();
+    emit levelingEnded();
     //Return to 0.0
     sendGcodeLocal("G28 Z0\r");
     sendGcodeLocal(QString("G0 X0 Y0 F").append(QString::number(speed)).append("\r"));
@@ -1994,7 +2030,35 @@ void GCodeMarlin::clearLevelingData()
     }
 }
 
-SpilineInterpolate3D * GCodeMarlin::getInterpolator()
+const Interpolator *GCodeMarlin::getInterpolator()
 {
     return interpolator;
+}
+
+void GCodeMarlin::changeInterpolator(int index)
+{
+    if (interpolator == NULL) {
+        return;
+    }
+
+    if (interpolator->getType() == index)
+    {
+        return;
+    }
+
+    if (index == Interpolator::SPILINE && interpolator->getType() == Interpolator::LINEAR)
+    {
+        Interpolator * t = new SpilineInterpolate3D(interpolator);
+        delete interpolator;
+        interpolator = t;
+    } else if (index == Interpolator::LINEAR && interpolator->getType() == Interpolator::SPILINE)
+    {
+        Interpolator * t = new LinearInterpolate3D(interpolator);
+        delete interpolator;
+        interpolator = t;
+    } else {
+        cout << __FUNCTION__ << "Interpolator change not supported. Leaving the original intact" << endl;
+    }
+
+    emit levelingEnded();
 }

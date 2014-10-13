@@ -11,7 +11,6 @@
 #include "rs232.h"
 #include "coord3d.h"
 #include "controlparams.h"
-#include "SpilineInterpolate3D.h"
 
 #define BUF_SIZE 300
 
@@ -64,6 +63,7 @@ signals:
     void setVisualLivenessCurrPos(bool isLiveCP);
     void levelingProgress(int);
     void levelingEnded();
+    void recomputeOffsetEnded(double);
 
 public slots:
     void openPort(QString commPortStr, QString baudRate);
@@ -76,11 +76,13 @@ public slots:
     void controllerSetHome();
     void sendControllerReset();
     void sendControllerUnlock();
-    void performZLeveling(QRect extent, int xSteps, int ySteps, double zStarting, double speed, double zSafe);
+    void performZLeveling(int levelingAlgorithm, QRect extent, int xSteps, int ySteps, double zStarting, double speed, double zSafe, double offset);
     void goToHome();
     bool isZInterpolatorReady();
     void clearLevelingData();
-    SpilineInterpolate3D * getInterpolator();
+    const Interpolator * getInterpolator();
+    void changeInterpolator(int index);
+    void recomputeOffset(double speed, double zStarting);
 
 protected:
     void timerEvent(QTimerEvent *event);
@@ -134,7 +136,7 @@ private:
     QStringList grblCmdErrors;
     QStringList grblFilteredCmds;
 
-    SpilineInterpolate3D * interpolator;
+    Interpolator * interpolator;
 
     float lastExplicitFeed;
     bool manualFeedSetted;
