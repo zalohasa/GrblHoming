@@ -34,15 +34,6 @@ QSize LevelingRenderArea::sizeHint() const
     return QSize(1000, 1000);
 }
 
-//void LevelingRenderArea::mousePressEvent(QMouseEvent * mouseEvent)
-//{
-//    if (mouseEvent->button() == Qt::LeftButton)
-//    {
-//        forceReload = true;
-//        this->update();
-//    }
-//}
-
 void LevelingRenderArea::resizeEvent(QResizeEvent *)
 {
     QSize s;
@@ -113,6 +104,20 @@ RenderThread::RenderThread(QObject *parent)
 {
     abort = false;
     restart = false;
+
+    //Create a gradient with the five colors that will represent the height.
+    QLinearGradient gr(QPointF(0,0), QPointF(1005,0));
+
+    gr.setColorAt(0, QColor(0,0,255));
+    gr.setColorAt(0.25, QColor(0, 255, 255));
+    gr.setColorAt(0.5, QColor(0, 255, 0));
+    gr.setColorAt(0.75, QColor(255, 255, 0));
+    gr.setColorAt(1, QColor(255, 0, 0));
+
+    //Create an image 1006 pixels width and 1 pixel height to draw the gradient.
+    gradientImage = QImage(1006, 1, QImage::Format_RGB32);
+    QPainter p(&gradientImage);
+    p.fillRect(gradientImage.rect(), gr);
 }
 
 RenderThread::~RenderThread()
@@ -127,7 +132,7 @@ RenderThread::~RenderThread()
 
 void RenderThread::render(const Interpolator *interpolator, QSize size)
 {
-    if (interpolator == NULL)
+    if (interpolator == NULL || interpolator->getType() == Interpolator::SINGLE)
     {
         return;
     }
@@ -174,21 +179,6 @@ void RenderThread::run()
                 double remappedI = remap(double(i), ELLIPSE_SIZE, size.width() - ELLIPSE_SIZE - 1, 0, interpolator->getXValue(interpolator->getXSteps() - 1));
                 double remappedJ = remap(double((size.height() - 1)-j), ELLIPSE_SIZE, size.height() - ELLIPSE_SIZE - 1, 0, interpolator->getYValue(interpolator->getYSteps() - 1));
 
-                //Create a gradient with the three colors that will represent the height.
-                QLinearGradient gr(QPointF(0,0), QPointF(1005,0));
-                gr.setColorAt(0, QColor(255,0,0));
-
-                //Get the median of all the zprobes, so the predominant color is the central one.
-                //So we set the main color using the median as the position of the color in the gradient, instead of simply putting it at the center.
-                double median = remap(interpolator->getMedian(), interpolator->getMinZValue(), interpolator->getMaxZValue(), 0, 1);
-
-                gr.setColorAt(median, QColor(0, 255, 0));
-                gr.setColorAt(1, QColor(0, 0, 255));
-
-                QImage img(1006, 1, QImage::Format_RGB32);
-                QPainter p(&img);
-                p.fillRect(img.rect(), gr);
-
                 //Do the interpolation
                 interpolator->interpolate(remappedI, remappedJ, yVal);
 
@@ -196,13 +186,19 @@ void RenderThread::run()
     //            std::cout << "Original i: " << i << " RemappedI = " << remappedI << " - Original J: "
     //                      << j << " RemappedJ = " << remappedJ << " Value: "
     //                      << yVal << " Remapped: " << yValRemapped << std::endl;
-                QColor c = Qt::gray;
+
 
                 //Avoid trying to get colors from the image gradient outside its size.
                 //This can happen with some image zones.
-                if (yValRemapped >=0 && yValRemapped < img.width())
+                QColor c;
+                if (yValRemapped<0){
+                    c = QColor(0, 0, 255);
+                } else if (yValRemapped > 1005)
                 {
-                    c = img.pixel(yValRemapped, 0);
+                    c = QColor(255, 0, 0);
+                }
+                else{
+                    c = gradientImage.pixel(yValRemapped, 0);
                 }
 
                 painter.setPen(QPen(c, 1));

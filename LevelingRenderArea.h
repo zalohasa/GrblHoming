@@ -11,8 +11,6 @@
 #include <QWaitCondition>
 #include <QThread>
 
-//! [0]
-
 class RenderThread : public QThread
 {
     Q_OBJECT
@@ -51,7 +49,7 @@ private:
     QWaitCondition condition;
     const Interpolator *interpolator;
     QSize size;
-    //bool restart;
+    QImage gradientImage;
     bool abort;
     bool restart;
 
