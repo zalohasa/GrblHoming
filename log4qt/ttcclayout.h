@@ -38,7 +38,7 @@
  ******************************************************************************/
 
 #ifdef ABSOLUTE
-#undef ABSOLUTER
+#undef ABSOLUTE
 #endif
 
 #ifdef RELATIVE

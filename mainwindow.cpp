@@ -569,6 +569,7 @@ void MainWindow::levelingAlgorithmChanged(int index)
         ui->levelingYStepsIn->setEnabled(false);
         ui->levelingSpeedIn->setEnabled(false);
         ui->levelingZSafeIn->setEnabled(false);
+        ui->btnRecomputeOffset->setEnabled(false);
     } else {
         ui->levelingXSizeIn->setEnabled(true);
         ui->levelingYSizeIn->setEnabled(true);
@@ -576,6 +577,7 @@ void MainWindow::levelingAlgorithmChanged(int index)
         ui->levelingYStepsIn->setEnabled(true);
         ui->levelingSpeedIn->setEnabled(true);
         ui->levelingZSafeIn->setEnabled(true);
+        ui->btnRecomputeOffset->setEnabled(true);
     }
 
     //TODO show a message asking for confirmation.

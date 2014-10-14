@@ -2250,15 +2250,7 @@
   </customwidget>
  </customwidgets>
  <tabstops>
-  <tabstop>cmbPort</tabstop>
-  <tabstop>btnOpenPort</tabstop>
-  <tabstop>comboBoxBaudRate</tabstop>
-  <tabstop>filePath</tabstop>
-  <tabstop>openFile</tabstop>
-  <tabstop>Begin</tabstop>
-  <tabstop>Stop</tabstop>
-  <tabstop>comboCommand</tabstop>
-  <tabstop>tabAxisVisualizer</tabstop>
+  <tabstop>levelingComboBox</tabstop>
   <tabstop>levelingXSizeIn</tabstop>
   <tabstop>levelingYSizeIn</tabstop>
   <tabstop>levelingXStepIn</tabstop>
@@ -2270,7 +2262,15 @@
   <tabstop>btnTestLeveling</tabstop>
   <tabstop>btnCancelLeveling</tabstop>
   <tabstop>btnClearLeveling</tabstop>
+  <tabstop>btnRecomputeOffset</tabstop>
   <tabstop>levelingUseData</tabstop>
+  <tabstop>Stop</tabstop>
+  <tabstop>comboCommand</tabstop>
+  <tabstop>tabAxisVisualizer</tabstop>
+  <tabstop>btnOpenPort</tabstop>
+  <tabstop>comboBoxBaudRate</tabstop>
+  <tabstop>filePath</tabstop>
+  <tabstop>Begin</tabstop>
   <tabstop>btnSetHome</tabstop>
   <tabstop>btnGoHomeSafe</tabstop>
   <tabstop>pushButtonRefreshPos</tabstop>
@@ -2290,6 +2290,9 @@
   <tabstop>comboStep</tabstop>
   <tabstop>btnResetGrbl</tabstop>
   <tabstop>btnUnlockGrbl</tabstop>
+  <tabstop>btnClearStatusList</tabstop>
+  <tabstop>cmbPort</tabstop>
+  <tabstop>openFile</tabstop>
  </tabstops>
  <resources>
   <include location="GrblController.qrc"/>
