@@ -16,6 +16,11 @@
 
 #include <QObject>
 #include <iostream>
+#include <QList>
+
+#include "basicgeometry.h"
+
+#define MIN_SEGMENT_SIZE 4
 
 using std::cout;
 using std::endl;
@@ -760,13 +765,26 @@ void GCodeMarlin::sendFile(QString path)
                 if (strline.size() != 0)
                 {
 
+                    QStringList levelingList;
                     if (controlParams.useZLevelingData && interpolator != NULL)
                     {
                         //We need to change the Z value using the interpolator
-                        strline = levelLine(strline);
+                        levelingList = levelLine(strline);
+                    } else {
+                        levelingList.append(strline);
                     }
 
-                    if (controlParams.reducePrecision)
+                    bool ret = false;
+                    foreach (QString outputLine, levelingList)
+                    {
+                        computeCoordinates(outputLine);
+                        ret = sendGcodeLocal(outputLine, false, -1, currLine + 1);
+
+                        if (!ret)
+                            break;
+                    }
+
+                    /*if (controlParams.reducePrecision)
                     {
                         strline = reducePrecision(strline);
                     }
@@ -804,6 +822,7 @@ void GCodeMarlin::sendFile(QString path)
 
                     if (rateLimitMsg.size() > 0)
                         addList(rateLimitMsg);
+                        */
 
                     if (!ret)
                     {
@@ -995,12 +1014,13 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
     return line;
 }
 
-QString GCodeMarlin::levelLine(const QString &command)
+QStringList GCodeMarlin::levelLine(const QString &command)
 {
     static double lastX = 0;
     static double lastY = 0;
     static double lastZ = 0;
     QString tmp = command.trimmed();
+    QStringList resultList;
     tmp = tmp.toUpper();
     QRegExp rx("G(\\d+)(.*)");
 
@@ -1013,8 +1033,11 @@ QString GCodeMarlin::levelLine(const QString &command)
 
          if (commandCode != 0 && commandCode != 1)
          {
-             return command;
+             resultList.append(command);
+             return resultList;
          }
+
+         Point lastPoint(lastX, lastY, lastZ);
 
          bool hasX = false;
          if (parameters.indexOf("X") >= 0)
@@ -1061,71 +1084,100 @@ QString GCodeMarlin::levelLine(const QString &command)
              }
          }
 
-
-         std::cout << "GCodeMarlin::levelLine - Line original data: X: " << lastX << " Y:" << lastY << " Z:" << lastZ << std::endl;
-
-         double targetZ = lastZ;
-         double delta = 0;
-         interpolator->interpolate(lastX, lastY, delta);
-         targetZ += delta;
-         targetZ -= controlParams.zLevelingOffset;
-
-         std::cout << "GCodeMarlin::levelLine - Line interpolated data: X: " << lastX << " Y:" << lastY << " Z:" << targetZ << std::endl;
-
-         QStringList components = tmp.split(" ", QString::SkipEmptyParts);
-         QString c;
-         QString newCmd = "";
-
          //TODO think about what to do with the fourth axis.
          if (!hasX && !hasY && !hasZ)
          {
              //The command has only F or F and Fourth
-             return command;
+             resultList.append(command);
+             return resultList;
          }
 
-         QString g,x,y,z,fourth,f;
+         Point newPoint(lastX, lastY, lastZ);
+
+         //Clear the Z component to calculate the distance between points in the XY plane only.
+         Point lastPointNoZ = lastPoint;
+         lastPointNoZ.z = 0;
+         Point newPointNoZ = newPoint;
+         newPointNoZ.z = 0;
+         double lenght = Distance(lastPointNoZ, newPointNoZ);
+
+         std::cout << __FUNCTION__ << " - Old point: (" << lastPoint.x << "," << lastPoint.y << "," << lastPoint.z << ") - New Point: ("
+                   << newPoint.x << ","<< newPoint.y << ","<<newPoint.z << ")" << std::endl;
+         std::cout << __FUNCTION__ << " - Segment size: " << lenght << std::endl;
+         QList<Point> pointList;
+         //If the distance between the old point and the new one is bigger than the threshold, split the segment.
+         if (lenght >= MIN_SEGMENT_SIZE)
+         {
+             int segmentCount = ceil(lenght / MIN_SEGMENT_SIZE);
+             std::cout << __FUNCTION__ << " - Splitting segment in " << segmentCount << std::endl;
+             double segmentSize = lenght / segmentCount;
+
+             Vector d = newPoint - lastPoint;
+             d = normalize(d);
+             double delta = 0;
+
+             for(int i = 1; i<segmentCount; i++)
+             {
+                 Point dst = lastPoint + d * (segmentSize*i);
+                 interpolator->interpolate(dst.x, dst.y, delta);
+                 dst.z += delta;
+                 dst.z -= controlParams.zLevelingOffset;
+                 pointList.append(dst);
+                 std::cout << __FUNCTION__ << " - Segment intermediate point: (" << dst.x << ","<<dst.y<<","<<dst.z<<")"<<std::endl;
+             }
+         }
+
+         double delta = 0;
+         interpolator->interpolate(newPoint.x, newPoint.y, delta);
+         newPoint.z += delta;
+         newPoint.z -= controlParams.zLevelingOffset;
+
+         pointList.append(newPoint);
+
+         std::cout << __FUNCTION__ << " - Segment last point: (" << newPoint.x << "," << newPoint.y<<","<<newPoint.z<<")"<<std::endl;
+
+         QStringList components = tmp.split(" ", QString::SkipEmptyParts);
+
+         QString g,c,fourth,f;
 
          foreach (c, components)
          {
             if (c.at(0) == 'G'){
                 g = c;
-            }else if (c.at(0) == 'X'){
-                x = c;
-            }else if (c.at(0) == 'Y'){
-                y = c;
-            } else if(c.at(0) == 'Z') {
-                //nothing to do with Z
             } else if (c.at(0) == 'F') {
                 f = c;
             } else if (c.at(0) == controlParams.fourthAxisType){
                 fourth = c;
             }
          }
-         newCmd.append(g).append(" ");
-         if (!x.isEmpty())
-         {
-            newCmd.append(x).append(" ");
+
+         Point tmpPoint;
+         foreach(tmpPoint, pointList){
+             QString newCmd = "";
+             newCmd.append(g).append(" ");
+             newCmd.append("X").append(QString::number(tmpPoint.x)).append(" ");
+             newCmd.append("Y").append(QString::number(tmpPoint.y)).append(" ");
+             newCmd.append("Z").append(QString::number(tmpPoint.z)).append(" ");
+
+             if (!fourth.isEmpty())
+             {
+                 newCmd.append(fourth).append(" ");
+             }
+             if (!f.isEmpty())
+             {
+                 newCmd.append(f);
+             }
+             std::cout << __FUNCTION__ << " - Generated command: " << newCmd.toStdString() << std::endl;
+             resultList.append(newCmd);
          }
 
-         if (!y.isEmpty())
-         {
-             newCmd.append(y).append(" ");
-         }
-         newCmd.append("Z").append(QString::number(targetZ)).append(" ");
-         if (!fourth.isEmpty())
-         {
-             newCmd.append(fourth).append(" ");
-         }
-         if (!f.isEmpty())
-         {
-             newCmd.append(f);
-         }
+         std::cout << __FUNCTION__ << " - Generated: " << resultList.size() << " new lines " << std::endl;
 
-         std::cout << "GCodeMarlin::levelLine - Final GCode Line: " << newCmd.toStdString() << std::endl;
-
-         return newCmd;
+         return resultList;
     }
-    return command;
+
+    resultList.append(command);
+    return resultList;
 }
 
 void GCodeMarlin::computeCoordinates(const QString &command)
@@ -1142,8 +1194,8 @@ void GCodeMarlin::computeCoordinates(const QString &command)
          int commandCode = list.at(1).toInt(&ok);
          QString parameters = list.at(2);
 
-         //Because in marlin we can not pull for position, because that means to break the command buffer in the firmware,
-         //and that breaks the look ahead functionality, we manually parse the GCode, and guess the coordinates from there.
+         //In marlin we can not pull for position, because that means to break the command buffer in the firmware,
+         //and that breaks the look ahead functionality, so we manually parse the GCode, and guess the coordinates from there.
 
          //TODO Add coordinate parsing for G2 and G3 commands. I guess that the simplest way to do so is to calculate the arc end coordinate.
          if (commandCode == 0 || commandCode == 1)

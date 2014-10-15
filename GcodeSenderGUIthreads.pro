@@ -69,7 +69,8 @@ HEADERS  += mainwindow.h \
     SpilineInterpolate3D.h \
     interpolator.h \
     LinearInterpolate3D.h \
-    SingleInterpolate.h
+    SingleInterpolate.h \
+    basicgeometry.h
 
 FORMS    += mainwindow.ui \
     options.ui \

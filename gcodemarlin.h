@@ -97,7 +97,7 @@ private:
     bool isGCommandValid(float value, bool& toEndOfLine);
     bool isMCommandValid(float value);
     QString makeLineMarlinFriendly(const QString& line);
-    QString levelLine(const QString& line);
+    QStringList levelLine(const QString& line);
 
     QString getMoveAmountFromString(QString prefix, QString item);
     bool SendJog(QString strline, bool absoluteAfterAxisAdj);
