@@ -27,6 +27,9 @@ public:
     const double * getYValues() const { return yValues; }
     const double * getXYValues() const {return xyValues; }
 
+    double xGridSize();
+    double yGridSize();
+
     double calculateOffset(double newZValue);
 
 protected:

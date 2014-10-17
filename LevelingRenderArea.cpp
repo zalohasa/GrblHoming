@@ -162,9 +162,10 @@ void RenderThread::run()
         painter.setRenderHint(QPainter::Antialiasing);
         painter.fillRect(finalImage.rect(), Qt::lightGray);
 
-        for (int i = ELLIPSE_SIZE; i <= size.width()-ELLIPSE_SIZE-1; i++)
+        for (int j = ELLIPSE_SIZE; j <= size.height()-ELLIPSE_SIZE-1; j++)
         {
-            for (int j = ELLIPSE_SIZE; j <= size.height() - ELLIPSE_SIZE-1; j++){
+            uint * line = reinterpret_cast<uint*>(finalImage.scanLine(j));
+            for (int i = ELLIPSE_SIZE; i <= size.width() - ELLIPSE_SIZE-1; i++){
                 if (restart) {
                     break;
                 }
@@ -201,8 +202,8 @@ void RenderThread::run()
                     c = gradientImage.pixel(yValRemapped, 0);
                 }
 
-                painter.setPen(QPen(c, 1));
-                painter.drawPoint(QPoint(i,j));
+                //Paint the pixel
+                line[i] = c.rgb();
             }
             if (restart)
             {

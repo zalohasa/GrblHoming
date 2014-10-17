@@ -20,7 +20,8 @@
 
 #include "basicgeometry.h"
 
-#define MIN_SEGMENT_SIZE 4
+//The minimal grid size will be divided by this number to get the max segment size.
+#define SEGMENT_SIZE_DIVIDER 2
 
 using std::cout;
 using std::endl;
@@ -156,7 +157,7 @@ void GCodeMarlin::pollPosWaitForIdle()
         }
 
         if (machineCoordLastIdlePos == machineCoord
-            && workCoordLastIdlePos == workCoord)
+                && workCoordLastIdlePos == workCoord)
         {
             break;
         }
@@ -218,7 +219,7 @@ bool GCodeMarlin::checkMarlin(const QString& result)
     {
         QRegExp rx("FIRMWARE_NAME:(.*) FIRMWARE_URL:(.*) PROTOCOL_VERSION:(\\d+)\\.(\\d+) MACHINE_TYPE:(\\w*).*");
 
-       if (rx.indexIn(result) != -1 && rx.captureCount() > 0)
+        if (rx.indexIn(result) != -1 && rx.captureCount() > 0)
         {
 
             QStringList list = rx.capturedTexts();
@@ -408,7 +409,7 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
 
 
         //TODO Use a qtimer in single shot mode to control the timeout. (Is this really necesary in Marlin?)
-       /* if (count > waitCount)
+        /* if (count > waitCount)
         {
             std::cout << "MABURRI porque count is " << count << " and waitCount is " << waitCount << std::endl;
             // waited too long for a response, fail
@@ -774,8 +775,29 @@ void GCodeMarlin::sendFile(QString path)
                         levelingList.append(strline);
                     }
 
+                    //As the leveling may generate various lines, we need to cicle every one of then performing the rest of the proccesses.
+                    int size = levelingList.size();
+                    QString rateLimitMsg;
+                    QStringList outputList;
+                    for (int i = 0; i<size; i++)
+                    {
+                        if (controlParams.reducePrecision)
+                        {
+                            levelingList.replace(i,reducePrecision(levelingList.at(i)));
+                        }
+
+                        if (controlParams.zRateLimit)
+                        {
+                            outputList.append(doZRateLimit(levelingList.at(i), rateLimitMsg, xyRateSet));
+                        }
+                        else
+                        {
+                            outputList.append(levelingList.at(i));
+                        }
+                    }
+
                     bool ret = false;
-                    foreach (QString outputLine, levelingList)
+                    foreach (QString outputLine, outputList)
                     {
                         computeCoordinates(outputLine);
                         ret = sendGcodeLocal(outputLine, false, -1, currLine + 1);
@@ -784,45 +806,8 @@ void GCodeMarlin::sendFile(QString path)
                             break;
                     }
 
-                    /*if (controlParams.reducePrecision)
-                    {
-                        strline = reducePrecision(strline);
-                    }
-
-                    QString rateLimitMsg;
-                    QStringList outputList;
-                    if (controlParams.zRateLimit)
-                    {
-                        outputList = doZRateLimit(strline, rateLimitMsg, xyRateSet);
-                    }
-                    else
-                    {
-                        outputList.append(strline);
-                    }
-
-                    bool ret = false;
-                    if (outputList.size() == 1)
-                    {
-                        std::cout << "GCodeMarlin::sendFile - output line: " << outputList.at(0).toStdString() << std::endl;
-                        computeCoordinates(outputList.at(0));
-                        ret = sendGcodeLocal(outputList.at(0), false, -1, currLine + 1);
-                    }
-                    else
-                    {
-                        foreach (QString outputLine, outputList)
-                        {
-                            std::cout << "GCodeMarlin::sendFile - output line: " << outputLine.toStdString() << std::endl;
-                            computeCoordinates(outputLine);
-                            ret = sendGcodeLocal(outputLine, false, -1, currLine + 1);
-
-                            if (!ret)
-                                break;
-                        }
-                    }
-
                     if (rateLimitMsg.size() > 0)
                         addList(rateLimitMsg);
-                        */
 
                     if (!ret)
                     {
@@ -838,13 +823,11 @@ void GCodeMarlin::sendFile(QString path)
             setProgress((int)percentComplete);
 
             currLine++;
-            std::cout << "GCodeMarlin::sendFile - End of line ------------------------------- " << std::endl;
         } while ((code.atEnd() == false) && (!abortState.get()));
 
         file.close();
 
         sendGcodeLocal(REQUEST_CURRENT_POS);
-
         emit resetTimer(false);
 
         if (shutdownState.get())
@@ -939,7 +922,7 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
             float feed = list.at(1).toFloat(&ok);
             if (ok)
             {
-               lastExplicitFeed = feed;
+                lastExplicitFeed = feed;
             }
         }
         std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (QString("G1 ") + tmp).toStdString() << std::endl;
@@ -966,34 +949,34 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 
         if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
         {
-             QStringList list = rx.capturedTexts();
-             bool ok = false;
-             int commandCode = list.at(1).toInt(&ok);
+            QStringList list = rx.capturedTexts();
+            bool ok = false;
+            int commandCode = list.at(1).toInt(&ok);
 
-             lastGCommand = "G" + QString::number(commandCode);
+            lastGCommand = "G" + QString::number(commandCode);
 
-             QString parameters = list.at(2);
-             if (commandCode == 0)
-             {
-                 if (parameters.indexOf("F") < 0)
-                 {
-                     //There is no F parameter, just append it.
-                     manualFeedSetted = true;
-                     std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(g0feed)).toStdString() << std::endl;
-                     return tmp + " F" + QString().setNum(g0feed);
-                 }
+            QString parameters = list.at(2);
+            if (commandCode == 0)
+            {
+                if (parameters.indexOf("F") < 0)
+                {
+                    //There is no F parameter, just append it.
+                    manualFeedSetted = true;
+                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(g0feed)).toStdString() << std::endl;
+                    return tmp + " F" + QString().setNum(g0feed);
+                }
 
-             } else if (commandCode == 1)
-             {
-                 int i = parameters.indexOf("F");
-                 if (i < 0 && manualFeedSetted)
-                 {
+            } else if (commandCode == 1)
+            {
+                int i = parameters.indexOf("F");
+                if (i < 0 && manualFeedSetted)
+                {
                     //Restore the last saved feed
-                     manualFeedSetted = false;
-                     std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(lastExplicitFeed)).toStdString() << std::endl;
-                     return tmp + " F" + QString().setNum(lastExplicitFeed);
-                 } else if (i >= 0)
-                 {
+                    manualFeedSetted = false;
+                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(lastExplicitFeed)).toStdString() << std::endl;
+                    return tmp + " F" + QString().setNum(lastExplicitFeed);
+                } else if (i >= 0)
+                {
                     QRegExp exp("F(\\d+\\.*\\d*)");//Can feed speed be negative? if so, then change the regex by "F(-*\\d+\\.*\\d*)"
                     if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
                     {
@@ -1003,8 +986,8 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                         if (ok)
                             lastExplicitFeed = feed;
                     }
-                 }
-             }
+                }
+            }
         }
 
 
@@ -1026,122 +1009,125 @@ QStringList GCodeMarlin::levelLine(const QString &command)
 
     if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
     {
-         QStringList list = rx.capturedTexts();
-         bool ok = false;
-         int commandCode = list.at(1).toInt(&ok);
-         QString parameters = list.at(2);
+        QStringList list = rx.capturedTexts();
+        bool ok = false;
+        int commandCode = list.at(1).toInt(&ok);
+        QString parameters = list.at(2);
 
-         if (commandCode != 0 && commandCode != 1)
-         {
-             resultList.append(command);
-             return resultList;
-         }
+        if (commandCode != 0 && commandCode != 1)
+        {
+            resultList.append(command);
+            return resultList;
+        }
 
-         Point lastPoint(lastX, lastY, lastZ);
+        Point lastPoint(lastX, lastY, lastZ);
 
-         bool hasX = false;
-         if (parameters.indexOf("X") >= 0)
-         {
-             hasX = true;
-             QRegExp exp("X(-*\\d+\\.*\\d*)");
-             if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
-             {
-                 QStringList lst = exp.capturedTexts();
-                 ok = false;
-                 double newX = lst.at(1).toDouble(&ok);
-                 if (ok)
-                     lastX = newX;
-             }
-         }
+        bool hasX = false;
+        if (parameters.indexOf("X") >= 0)
+        {
+            hasX = true;
+            QRegExp exp("X(-*\\d+\\.*\\d*)");
+            if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
+            {
+                QStringList lst = exp.capturedTexts();
+                ok = false;
+                double newX = lst.at(1).toDouble(&ok);
+                if (ok)
+                    lastX = newX;
+            }
+        }
 
-         bool hasY = false;
-         if (parameters.indexOf("Y") >= 0)
-         {
-             hasY = true;
-             QRegExp exp("Y(-*\\d+\\.*\\d*)");
-             if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
-             {
-                 QStringList lst = exp.capturedTexts();
-                 ok = false;
-                 double newY = lst.at(1).toDouble(&ok);
-                 if (ok)
-                     lastY = newY;
-             }
-         }
+        bool hasY = false;
+        if (parameters.indexOf("Y") >= 0)
+        {
+            hasY = true;
+            QRegExp exp("Y(-*\\d+\\.*\\d*)");
+            if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
+            {
+                QStringList lst = exp.capturedTexts();
+                ok = false;
+                double newY = lst.at(1).toDouble(&ok);
+                if (ok)
+                    lastY = newY;
+            }
+        }
 
-         bool hasZ = false;
-         if (parameters.indexOf("Z") >= 0)
-         {
-             hasZ = true;
-             QRegExp exp("Z(-*\\d+\\.*\\d*)");
-             if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
-             {
-                 QStringList lst = exp.capturedTexts();
-                 ok = false;
-                 double newZ = lst.at(1).toDouble(&ok);
-                 if (ok)
-                     lastZ = newZ;
-             }
-         }
+        bool hasZ = false;
+        if (parameters.indexOf("Z") >= 0)
+        {
+            hasZ = true;
+            QRegExp exp("Z(-*\\d+\\.*\\d*)");
+            if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
+            {
+                QStringList lst = exp.capturedTexts();
+                ok = false;
+                double newZ = lst.at(1).toDouble(&ok);
+                if (ok)
+                    lastZ = newZ;
+            }
+        }
 
-         //TODO think about what to do with the fourth axis.
-         if (!hasX && !hasY && !hasZ)
-         {
-             //The command has only F or F and Fourth
-             resultList.append(command);
-             return resultList;
-         }
+        //TODO think about what to do with the fourth axis.
+        if (!hasX && !hasY && !hasZ)
+        {
+            //The command has only F or F and Fourth
+            resultList.append(command);
+            return resultList;
+        }
 
-         Point newPoint(lastX, lastY, lastZ);
+        Point newPoint(lastX, lastY, lastZ);
 
-         //Clear the Z component to calculate the distance between points in the XY plane only.
-         Point lastPointNoZ = lastPoint;
-         lastPointNoZ.z = 0;
-         Point newPointNoZ = newPoint;
-         newPointNoZ.z = 0;
-         double lenght = Distance(lastPointNoZ, newPointNoZ);
+        //Clear the Z component to calculate the distance between points in the XY plane only.
+        Point lastPointNoZ = lastPoint;
+        lastPointNoZ.z = 0;
+        Point newPointNoZ = newPoint;
+        newPointNoZ.z = 0;
+        double lenght = Distance(lastPointNoZ, newPointNoZ);
 
-         std::cout << __FUNCTION__ << " - Old point: (" << lastPoint.x << "," << lastPoint.y << "," << lastPoint.z << ") - New Point: ("
-                   << newPoint.x << ","<< newPoint.y << ","<<newPoint.z << ")" << std::endl;
-         std::cout << __FUNCTION__ << " - Segment size: " << lenght << std::endl;
-         QList<Point> pointList;
-         //If the distance between the old point and the new one is bigger than the threshold, split the segment.
-         if (lenght >= MIN_SEGMENT_SIZE)
-         {
-             int segmentCount = ceil(lenght / MIN_SEGMENT_SIZE);
-             std::cout << __FUNCTION__ << " - Splitting segment in " << segmentCount << std::endl;
-             double segmentSize = lenght / segmentCount;
+        std::cout << __FUNCTION__ << " - Old point: (" << lastPoint.x << "," << lastPoint.y << "," << lastPoint.z << ") - New Point: ("
+                  << newPoint.x << ","<< newPoint.y << ","<<newPoint.z << ")" << std::endl;
 
-             Vector d = newPoint - lastPoint;
-             d = normalize(d);
-             double delta = 0;
+        QList<Point> pointList;
 
-             for(int i = 1; i<segmentCount; i++)
-             {
-                 Point dst = lastPoint + d * (segmentSize*i);
-                 interpolator->interpolate(dst.x, dst.y, delta);
-                 dst.z += delta;
-                 dst.z -= controlParams.zLevelingOffset;
-                 pointList.append(dst);
-                 std::cout << __FUNCTION__ << " - Segment intermediate point: (" << dst.x << ","<<dst.y<<","<<dst.z<<")"<<std::endl;
-             }
-         }
+        double maxSegmentSize = fmin(interpolator->xGridSize(), interpolator->yGridSize()) * (1.0/SEGMENT_SIZE_DIVIDER);
+        std::cout << __FUNCTION__ << " - Segment size: " << lenght << " Max segment size: " << maxSegmentSize << std::endl;
+        //If the distance between the old point and the new one is bigger than the threshold, split the segment.
+        if (lenght > maxSegmentSize)
+        {
+            int segmentCount = ceil(lenght / maxSegmentSize);
+            std::cout << __FUNCTION__ << " - Splitting segment in " << segmentCount << std::endl;
+            double segmentSize = lenght / segmentCount;
 
-         double delta = 0;
-         interpolator->interpolate(newPoint.x, newPoint.y, delta);
-         newPoint.z += delta;
-         newPoint.z -= controlParams.zLevelingOffset;
+            Vector d = newPoint - lastPoint;
+            d = normalize(d);
+            double delta = 0;
 
-         pointList.append(newPoint);
+            for(int i = 1; i<segmentCount; i++)
+            {
+                Point dst = lastPoint + d * (segmentSize*i);
+                interpolator->interpolate(dst.x, dst.y, delta);
+                dst.z += delta;
+                dst.z -= controlParams.zLevelingOffset;
+                pointList.append(dst);
+                std::cout << __FUNCTION__ << " - Segment intermediate point: (" << dst.x << ","<<dst.y<<","<<dst.z<<")"<<std::endl;
+            }
+        }
 
-         std::cout << __FUNCTION__ << " - Segment last point: (" << newPoint.x << "," << newPoint.y<<","<<newPoint.z<<")"<<std::endl;
+        double delta = 0;
+        interpolator->interpolate(newPoint.x, newPoint.y, delta);
+        newPoint.z += delta;
+        newPoint.z -= controlParams.zLevelingOffset;
 
-         QStringList components = tmp.split(" ", QString::SkipEmptyParts);
+        pointList.append(newPoint);
 
-         QString g,c,fourth,f;
+        std::cout << __FUNCTION__ << " - Segment last point: (" << newPoint.x << "," << newPoint.y<<","<<newPoint.z<<")"<<std::endl;
 
-         foreach (c, components)
-         {
+        QStringList components = tmp.split(" ", QString::SkipEmptyParts);
+
+        QString g,c,fourth,f;
+
+        foreach (c, components)
+        {
             if (c.at(0) == 'G'){
                 g = c;
             } else if (c.at(0) == 'F') {
@@ -1149,31 +1135,31 @@ QStringList GCodeMarlin::levelLine(const QString &command)
             } else if (c.at(0) == controlParams.fourthAxisType){
                 fourth = c;
             }
-         }
+        }
 
-         Point tmpPoint;
-         foreach(tmpPoint, pointList){
-             QString newCmd = "";
-             newCmd.append(g).append(" ");
-             newCmd.append("X").append(QString::number(tmpPoint.x)).append(" ");
-             newCmd.append("Y").append(QString::number(tmpPoint.y)).append(" ");
-             newCmd.append("Z").append(QString::number(tmpPoint.z)).append(" ");
+        Point tmpPoint;
+        foreach(tmpPoint, pointList){
+            QString newCmd = "";
+            newCmd.append(g).append(" ");
+            newCmd.append("X").append(QString::number(tmpPoint.x)).append(" ");
+            newCmd.append("Y").append(QString::number(tmpPoint.y)).append(" ");
+            newCmd.append("Z").append(QString::number(tmpPoint.z)).append(" ");
 
-             if (!fourth.isEmpty())
-             {
-                 newCmd.append(fourth).append(" ");
-             }
-             if (!f.isEmpty())
-             {
-                 newCmd.append(f);
-             }
-             std::cout << __FUNCTION__ << " - Generated command: " << newCmd.toStdString() << std::endl;
-             resultList.append(newCmd);
-         }
+            if (!fourth.isEmpty())
+            {
+                newCmd.append(fourth).append(" ");
+            }
+            if (!f.isEmpty())
+            {
+                newCmd.append(f);
+            }
+            std::cout << __FUNCTION__ << " - Generated command: " << newCmd.toStdString() << std::endl;
+            resultList.append(newCmd);
+        }
 
-         std::cout << __FUNCTION__ << " - Generated: " << resultList.size() << " new lines " << std::endl;
+        std::cout << __FUNCTION__ << " - Generated: " << resultList.size() << " new lines " << std::endl;
 
-         return resultList;
+        return resultList;
     }
 
     resultList.append(command);
@@ -1189,17 +1175,17 @@ void GCodeMarlin::computeCoordinates(const QString &command)
 
     if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
     {
-         QStringList list = rx.capturedTexts();
-         bool ok = false;
-         int commandCode = list.at(1).toInt(&ok);
-         QString parameters = list.at(2);
+        QStringList list = rx.capturedTexts();
+        bool ok = false;
+        int commandCode = list.at(1).toInt(&ok);
+        QString parameters = list.at(2);
 
-         //In marlin we can not pull for position, because that means to break the command buffer in the firmware,
-         //and that breaks the look ahead functionality, so we manually parse the GCode, and guess the coordinates from there.
+        //In marlin we can not pull for position, because that means to break the command buffer in the firmware,
+        //and that breaks the look ahead functionality, so we manually parse the GCode, and guess the coordinates from there.
 
-         //TODO Add coordinate parsing for G2 and G3 commands. I guess that the simplest way to do so is to calculate the arc end coordinate.
-         if (commandCode == 0 || commandCode == 1)
-         {
+        //TODO Add coordinate parsing for G2 and G3 commands. I guess that the simplest way to do so is to calculate the arc end coordinate.
+        if (commandCode == 0 || commandCode == 1)
+        {
             QStringList components = parameters.split(" ", QString::SkipEmptyParts);
             QString c;
             foreach (c, components)
@@ -1224,7 +1210,7 @@ void GCodeMarlin::computeCoordinates(const QString &command)
 
             emit updateCoordinates(machineCoord, workCoord);
             emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
-         }
+        }
 
 
     }
@@ -1662,10 +1648,10 @@ QStringList GCodeMarlin::doZRateLimit(QString inputLine, QString& msg, bool& xyR
                 gotF = true;
             }
             else
-            if (s.at(0) == 'X' || s.at(0) == 'Y' || s.at(0) == 'C')
-            {
-                addRateXY = true;
-            }
+                if (s.at(0) == 'X' || s.at(0) == 'Y' || s.at(0) == 'C')
+                {
+                    addRateXY = true;
+                }
         }
 
         if (addRateG && addRateXY)
@@ -1884,7 +1870,7 @@ bool GCodeMarlin::probeResultToValue(const QString & result, double &zCoord)
         zCoord = list.at(1).toDouble(&ok);
         if (ok)
         {
-           return true;
+            return true;
         } else {
             return false;
         }
@@ -1997,9 +1983,9 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             }
             cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
             sendGcodeInternal(QString("G1 X").
-                           append(QString::number(xValues[i])).
-                                  append(" Y").
-                                  append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
+                              append(QString::number(xValues[i])).
+                              append(" Y").
+                              append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
@@ -2028,9 +2014,9 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             }
             cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
             sendGcodeInternal(QString("G1 X").
-                           append(QString::number(xValues[i])).
-                                  append(" Y").
-                                  append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
+                              append(QString::number(xValues[i])).
+                              append(" Y").
+                              append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
