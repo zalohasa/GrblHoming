@@ -1,6 +1,13 @@
 #ifndef LEVELING_RENDERAREA_H
 #define LEVELING_RENDERAREA_H
 
+/*
+ * Leveling render area to display the Z leveling data in a visual way.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 #include "interpolator.h"
 
 #include <QBrush>

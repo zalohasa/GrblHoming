@@ -38,7 +38,8 @@ SOURCES += main.cpp\
     SpilineInterpolate3D.cpp \
     LinearInterpolate3D.cpp \
     SingleInterpolate.cpp \
-    interpolator.cpp
+    interpolator.cpp \
+    gcommands.cpp
 
 
 HEADERS  += mainwindow.h \
@@ -70,7 +71,8 @@ HEADERS  += mainwindow.h \
     interpolator.h \
     LinearInterpolate3D.h \
     SingleInterpolate.h \
-    basicgeometry.h
+    basicgeometry.h \
+    gcommands.h
 
 FORMS    += mainwindow.ui \
     options.ui \

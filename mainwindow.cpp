@@ -394,7 +394,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
     info("%s has stopped", GRBL_CONTROLLER_NAME_AND_VERSION);
 
-    SLEEP(300);
+    QThread::msleep(300);
 
     emit shutdown();
 

@@ -1,6 +1,13 @@
 #ifndef LINEARINTERPOLATE3D_H
 #define LINEARINTERPOLATE3D_H
 
+/*
+ * Linear interpolator class that that supports a minimum of two probing points per axis.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 #include "interpolator.h"
 
 class LinearInterpolate3D : public Interpolator

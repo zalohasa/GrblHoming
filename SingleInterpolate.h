@@ -1,6 +1,13 @@
 #ifndef SINGLEINTERPOLATE_H
 #define SINGLEINTERPOLATE_H
 
+/*
+ * Mock interpolator to support simple tool height auto adjust.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 #include "interpolator.h"
 
 class SingleInterpolate : public Interpolator

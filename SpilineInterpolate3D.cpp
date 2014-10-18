@@ -2,6 +2,13 @@
 #include <iostream>
 #include <string.h>
 
+/*
+ * Catmull-Rom Bicubic spiline interpolator class.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 using std::cout;
 using std::endl;
 

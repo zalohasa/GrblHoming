@@ -2,6 +2,13 @@
 #include <iostream>
 #include <string.h>
 
+/*
+ * Linear interpolator class that that supports a minimum of two probing points per axis.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 using std::cout;
 using std::endl;
 

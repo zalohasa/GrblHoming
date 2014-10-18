@@ -2,17 +2,20 @@
 #define GCODEMARLIN_H
 
 #include "gcodecontroller.h"
+#include "rs232.h"
+#include "coord3d.h"
+#include "controlparams.h"
+#include "gcommands.h"
 
 #include <QString>
 #include <QFile>
 #include <QThread>
 #include <QTextStream>
 #include "definitions.h"
-#include "rs232.h"
-#include "coord3d.h"
-#include "controlparams.h"
 
-#define BUF_SIZE 300
+
+#define TX_BUF_SIZE 96 //In marlin there are four buffers of 96 bytes.
+#define RX_BUF_SIZE 300
 
 #define RESPONSE_OK "ok"
 #define RESPONSE_ERROR "error"
@@ -96,10 +99,9 @@ private:
     QString reducePrecision(QString line);
     bool isGCommandValid(float value, bool& toEndOfLine);
     bool isMCommandValid(float value);
-    QString makeLineMarlinFriendly(const QString& line);
-    QStringList levelLine(const QString& line);
+    CodeCommand *makeLineMarlinFriendly(const QString& line);
+    QList<CodeCommand *> levelLine(CodeCommand *line);
 
-    QString getMoveAmountFromString(QString prefix, QString item);
     bool SendJog(QString strline, bool absoluteAfterAxisAdj);
     void parseCoordinates(const QString& received);
     void pollPosWaitForIdle();
@@ -109,9 +111,8 @@ private:
     void setConfigureInchesMode(bool setGrblUnits);
     QStringList doZRateLimit(QString strline, QString& msg, bool& xyRateSet);
     void sendStatusList(QStringList& listToSend);
-    void clearToHome();
     bool checkMarlin(const QString& result);
-    void computeCoordinates(const QString& command);
+    void computeCoordinates(const CodeCommand &command);
 
     bool probeResultToValue(const QString & result, double &zCoord);
 
@@ -123,15 +124,13 @@ private:
     QString currComPort;
     bool doubleDollarFormat;
     AtomicIntBool settingsItemCount;
-    QString lastState;
     bool incorrectMeasurementUnits;
     bool incorrectLcdDisplayUnits;
     Coord3D machineCoord, workCoord;
     Coord3D machineCoordLastIdlePos, workCoordLastIdlePos;
-    double maxZ;
     QList<CmdResponse> sendCount;
+    Point lastLevelingPoint;
 
-    bool motionOccurred;
     int sliderZCount;
     QStringList grblCmdErrors;
     QStringList grblFilteredCmds;
@@ -140,10 +139,9 @@ private:
 
     float lastExplicitFeed;
     bool manualFeedSetted;
-    QString lastGCommand;
+    int lastGCommand;
     double lastZCoord;
 
-    int sentI;
     int rcvdI;
     int numaxis;
 };

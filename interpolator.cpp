@@ -1,5 +1,12 @@
 #include "interpolator.h"
 
+/*
+ * Basic interpolator class that all interpolators must derive from
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 double Interpolator::normaliceValue(double min, double max, double value) const
 {
     return (value - min) / (max - min);

@@ -2,6 +2,7 @@
 /****************************************************************
  * gcode.cpp
  * GrblHoming - zapmaker fork on github
+ * Marlin adaptation and ZLeveling code by Gonzalo López 2014
  *
  * 15 Nov 2012
  * GPL License (see LICENSE file)
@@ -13,15 +14,17 @@
 #include "SpilineInterpolate3D.h"
 #include "LinearInterpolate3D.h"
 #include "SingleInterpolate.h"
+#include "basicgeometry.h"
+#include "gcommands.h"
 
 #include <QObject>
 #include <iostream>
 #include <QList>
 
-#include "basicgeometry.h"
+
 
 //The minimal grid size will be divided by this number to get the max segment size.
-#define SEGMENT_SIZE_DIVIDER 2
+#define SEGMENT_SIZE_DIVIDER 3
 
 using std::cout;
 using std::endl;
@@ -29,21 +32,19 @@ using std::endl;
 GCodeMarlin::GCodeMarlin()
     : errorCount(0), doubleDollarFormat(false),
       incorrectMeasurementUnits(false), incorrectLcdDisplayUnits(false),
-      maxZ(0), motionOccurred(false),
       sliderZCount(0),
-      manualFeedSetted(false),
       interpolator(NULL),
+      manualFeedSetted(false),
       numaxis(DEFAULT_AXIS_COUNT)
 {
     // use base class's timer - use it to capture random text from the controller
+    lastLevelingPoint = Point(0, 0, 0);
     startTimer(1000);
 }
 
 void GCodeMarlin::openPort(QString commPortStr, QString baudRate)
 {
     numaxis = controlParams.useFourAxis ? MAX_AXIS_COUNT : DEFAULT_AXIS_COUNT;
-
-    clearToHome();
 
     currComPort = commPortStr;
 
@@ -67,7 +68,6 @@ void GCodeMarlin::openPort(QString commPortStr, QString baudRate)
 #if defined(Q_OS_LINUX)
         addList("-Is current user in sudoers group?");
 #endif
-        //QMessageBox(QMessageBox::Critical,"Error","Could not open port.",QMessageBox::Ok).exec();
     }
 }
 
@@ -85,7 +85,6 @@ void GCodeMarlin::sendControllerUnlock()
 // Slot for gcode-based 'zero out the current position values without motion'
 void GCodeMarlin::controllerSetHome()
 {
-    clearToHome();
     gotoXYZFourth("G92 X0 Y0 Z0");
 }
 
@@ -99,8 +98,6 @@ void GCodeMarlin::goToHome()
 // Slot called from other threads (i.e. main window, grbl dialog, etc.)
 void GCodeMarlin::sendGcode(QString line)
 {
-
-
     // empty line means we have just opened the com port
     if (line.length() == 0)
     {
@@ -130,9 +127,6 @@ void GCodeMarlin::sendGcode(QString line)
 
         if (!waitForStartupBanner(result, SHORT_WAIT_SEC, true))
             return;
-
-
-
     }
 
     else
@@ -141,7 +135,6 @@ void GCodeMarlin::sendGcode(QString line)
         // normal send of actual commands
         sendGcodeLocal(line, false);
     }
-
     pollPosWaitForIdle();
 }
 
@@ -258,28 +251,14 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
         return false;
     }
 
-    //bool ctrlX = line.size() > 0 ? (line.at(0).toLatin1() == CTRL_X) : false;
-
     bool sentReqForLocation = false;
-    bool sentReqForSettings = false;
 
     if (!line.compare(REQUEST_CURRENT_POS))
     {
         sentReqForLocation = true;
     }
 
-    else if (!line.compare(SETTINGS_COMMAND_V08a))
-    {
-        if (doubleDollarFormat)
-            line = SETTINGS_COMMAND_V08c;
-
-        sentReqForSettings = true;
-    }
-    else
-        motionOccurred = true;
-
     // adds to UI list, but prepends a > indicating a sent command
-
     if (!sentReqForLocation)// if requesting location, don't add that "noise" to the output view
     {
         emit addListOut(line);
@@ -288,18 +267,18 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
     if (line.size() == 0 || (!line.endsWith('\r')))
         line.append('\r');
 
-    char buf[BUF_SIZE + 1] = {0};
-    if (line.length() >= BUF_SIZE)
+    char buf[TX_BUF_SIZE + 1] = {0};
+    if (line.length() >= TX_BUF_SIZE)
     {
-        QString msg = tr("Buffer size too small");
+        QString msg = tr("Line too big for marling buffer: ").append(line);
         err("%s", qPrintable(msg));
         emit addList(msg);
         emit sendMsg(msg);
         return false;
     }
-    for (int i = 0; i < line.length(); i++)
-        buf[i] = line.at(i).toLatin1();
 
+    QByteArray data = line.toLatin1();
+    memcpy(buf, data.constData(), data.size());
 
     diag(qPrintable(tr("SENDING[%d]: %s\n")), currLine, buf);
 
@@ -315,7 +294,6 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
     }
     else
     {
-        sentI++;
         if (!waitForOk(result, waitSecActual, sentReqForLocation, false))
         {
             diag(qPrintable(tr("WAITFOROK FAILED\n")));
@@ -331,57 +309,26 @@ bool GCodeMarlin::sendGcodeInternal(QString line, QString& result, bool recordRe
 
             return false;
         }
-        else
-        {
-            if (sentReqForSettings)
-            {
-                QStringList list = result.split("$");
-                for (int i = 0; i < list.size(); i++)
-                {
-                    QString item = list.at(i);
-                    const QRegExp rx(REGEXP_SETTINGS_LINE);
-
-                    if (rx.indexIn(item, 0) != -1 && rx.captureCount() == 3)
-                    {
-                        QStringList capList = rx.capturedTexts();
-                        if (!capList.at(1).compare("13"))
-                        {
-                            if (!capList.at(2).compare("0"))
-                            {
-                                if (!controlParams.useMm)
-                                    incorrectLcdDisplayUnits = true;
-                            }
-                            else
-                            {
-                                if (controlParams.useMm)
-                                    incorrectLcdDisplayUnits = true;
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                settingsItemCount.set(list.size());
-            }
-        }
     }
     return true;
 }
 
 bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocation, bool finalize)
 {
-    char tmp[BUF_SIZE + 1] = {0};
+    Q_UNUSED(waitSec)
+    Q_UNUSED(finalize)
+
+    char tmp[RX_BUF_SIZE + 1] = {0};
 
     bool status = true;
     result.clear();
     while (!result.contains(RESPONSE_OK) && !result.contains(RESPONSE_ERROR) && !resetState.get())
     {
-        int n = port.PollComportLine(tmp, BUF_SIZE);
+        int n = port.PollComportLine(tmp, RX_BUF_SIZE);
         if (n < 0)
         {
             QString Mes(tr("Error reading data from COM port\n"))  ;
             err(qPrintable(Mes));
-
         }
         else if (n > 0)
         {
@@ -406,16 +353,6 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
             //Limit CPU usage while waiting for data.
             QThread::usleep(4000);
         }
-
-
-        //TODO Use a qtimer in single shot mode to control the timeout. (Is this really necesary in Marlin?)
-        /* if (count > waitCount)
-        {
-            std::cout << "MABURRI porque count is " << count << " and waitCount is " << waitCount << std::endl;
-            // waited too long for a response, fail
-            status = false;
-            break;
-        }*/
     }
 
     if (shutdownState.get())
@@ -425,7 +362,6 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
 
     if (status)
     {
-
         if (resetState.get())
         {
             QString msg(tr("Wait interrupted by user"));
@@ -462,14 +398,14 @@ bool GCodeMarlin::waitForOk(QString& result, int waitSec, bool sentReqForLocatio
 
 bool GCodeMarlin::waitForStartupBanner(QString& result, int waitSec, bool failOnNoFound)
 {
-    char tmp[BUF_SIZE + 1] = {0};
+    char tmp[RX_BUF_SIZE + 1] = {0};
     int count = 0;
     int waitCount = waitSec * 10;// multiplier depends on sleep values below
     bool status = true;
     result.clear();
     while (!resetState.get())
     {
-        int n = port.PollComportLine(tmp, BUF_SIZE);
+        int n = port.PollComportLine(tmp, RX_BUF_SIZE);
         if (n == 0)
         {
             count++;
@@ -576,42 +512,22 @@ bool GCodeMarlin::waitForStartupBanner(QString& result, int waitSec, bool failOn
 
 void GCodeMarlin::parseCoordinates(const QString& received)
 {
-
-    std::cout << "parsing coordinates" << std::endl;
-    bool good = false;
-
     QString format(".*X:(-*\\d+\\.\\d+)Y:(-*\\d+\\.\\d+)Z:(-*\\d+\\.\\d+).*");
-    QRegExp rxWPos = QRegExp(format);
+    QRegExp rx = QRegExp(format);
 
-    if (rxWPos.indexIn(received, 0) != -1)
+    if (rx.indexIn(received) != -1 && rx.captureCount() > 0)
     {
-        good = true;
-    }
-
-    if (good) {  /// naxis contains number axis
-
-        //numaxis = naxis;
-        QStringList list = rxWPos.capturedTexts();
-        //int index = 1;
-
-
+        QStringList list = rx.capturedTexts();
 
         machineCoord.x = list.at(1).toFloat();
         machineCoord.y = list.at(2).toFloat();
         machineCoord.z = list.at(3).toFloat();
-        //if (numaxis == MAX_AXIS_COUNT)
-        //    machineCoord.c = list.at(index++).toFloat();
 
-        workCoord.x = list.at(1).toFloat();
-        workCoord.y = list.at(2).toFloat();
-        workCoord.z = list.at(3).toFloat();
+        workCoord.x = machineCoord.x;
+        workCoord.y = machineCoord.y;
+        workCoord.z = machineCoord.z;
         if (numaxis == MAX_AXIS_COUNT)
             workCoord.fourth = list.at(4).toFloat();
-        /*if (state != "Run")
-            workCoord.stoppedZ = true;
-        else
-            workCoord.stoppedZ = false;
-            */
 
         workCoord.sliderZIndex = sliderZCount;
         if (numaxis == DEFAULT_AXIS_COUNT)
@@ -625,21 +541,9 @@ void GCodeMarlin::parseCoordinates(const QString& received)
                  workCoord.x, workCoord.y, workCoord.z, workCoord.fourth
                  );
 
-        if (workCoord.z > maxZ)
-            maxZ = workCoord.z;
-
         emit updateCoordinates(machineCoord, workCoord);
         emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
-        //emit setLastState(state);
-
-        //lastState = state;
-        return;
     }
-    // TODO fix to print
-    //if (!good /*&& received.indexOf("MPos:") != -1*/)
-    //    err(qPrintable(tr("Error decoding position data! [%s]\n")), qPrintable(received));
-
-    lastState = "";
 }
 
 void GCodeMarlin::sendStatusList(QStringList& listToSend)
@@ -655,17 +559,17 @@ void GCodeMarlin::sendStatusList(QStringList& listToSend)
 }
 
 // called once a second to capture any random strings that come from the controller
-#pragma GCC diagnostic ignored "-Wunused-parameter" push
 void GCodeMarlin::timerEvent(QTimerEvent *event)
 {
+    Q_UNUSED(event)
     if (port.isPortOpen())
     {
-        char tmp[BUF_SIZE + 1] = {0};
+        char tmp[RX_BUF_SIZE + 1] = {0};
         QString result;
 
         for (int i = 0; i < 10 && !shutdownState.get() && !resetState.get(); i++)
         {
-            int n = port.PollComport(tmp, BUF_SIZE);
+            int n = port.PollComport(tmp, RX_BUF_SIZE);
             if (n == 0)
                 break;
 
@@ -690,7 +594,6 @@ void GCodeMarlin::timerEvent(QTimerEvent *event)
         sendStatusList(listToSend);
     }
 }
-#pragma GCC diagnostic ignored "-Wunused-parameter" pop
 
 void GCodeMarlin::sendFile(QString path)
 {
@@ -698,11 +601,10 @@ void GCodeMarlin::sendFile(QString path)
     std::cout << " ---------- INIT SENDING FILE -------------- " << std::endl;
     addList(QString(tr("Sending file '%1'")).arg(path));
 
-    // send something to be sure the controller is ready
-    //sendGcodeLocal("", true, SHORT_WAIT_SEC);
-
     //Set absolute coordinates
     sendGcodeLocal("G90\r");
+    pollPosWaitForIdle();
+    lastLevelingPoint = Point(workCoord.x, workCoord.y, workCoord.z);
 
     setProgress(0);
     emit setQueuedCommands(0, false);
@@ -729,7 +631,6 @@ void GCodeMarlin::sendFile(QString path)
 
         code.seek(0);
 
-        sentI = 0;
         rcvdI = 0;
         emit resetTimer(true);
 
@@ -757,38 +658,39 @@ void GCodeMarlin::sendFile(QString path)
                 if (controlParams.filterFileCommands)
                 {
                     strline = strline.toUpper();
+                    //Add an space between parameters.
                     strline.replace(QRegExp("([A-Z])"), " \\1");
                     strline = removeUnsupportedCommands(strline);
                 }
 
-                strline = makeLineMarlinFriendly(strline);
-
-                if (strline.size() != 0)
+                CodeCommand * currentCommand = makeLineMarlinFriendly(strline);
+                //if the current command is null, then
+                if (currentCommand != NULL)
                 {
 
-                    QStringList levelingList;
+                    QList<CodeCommand*> levelingList;
                     if (controlParams.useZLevelingData && interpolator != NULL)
                     {
                         //We need to change the Z value using the interpolator
-                        levelingList = levelLine(strline);
+                        levelingList = levelLine(currentCommand);
                     } else {
-                        levelingList.append(strline);
+                        levelingList.append(currentCommand);
                     }
 
                     //As the leveling may generate various lines, we need to cicle every one of then performing the rest of the proccesses.
                     int size = levelingList.size();
                     QString rateLimitMsg;
-                    QStringList outputList;
+                    QList<CodeCommand*> outputList;
                     for (int i = 0; i<size; i++)
                     {
                         if (controlParams.reducePrecision)
                         {
-                            levelingList.replace(i,reducePrecision(levelingList.at(i)));
+                            //reducePrecision(levelingList.at(i));
                         }
 
                         if (controlParams.zRateLimit)
                         {
-                            outputList.append(doZRateLimit(levelingList.at(i), rateLimitMsg, xyRateSet));
+//                            outputList.append(doZRateLimit(levelingList.at(i), rateLimitMsg, xyRateSet));
                         }
                         else
                         {
@@ -797,10 +699,11 @@ void GCodeMarlin::sendFile(QString path)
                     }
 
                     bool ret = false;
-                    foreach (QString outputLine, outputList)
+                    foreach (CodeCommand* outputCommand, outputList)
                     {
-                        computeCoordinates(outputLine);
-                        ret = sendGcodeLocal(outputLine, false, -1, currLine + 1);
+                        computeCoordinates(*outputCommand);
+                        ret = sendGcodeLocal(outputCommand->toString(), false, -1, currLine + 1);
+                        delete outputCommand;
 
                         if (!ret)
                             break;
@@ -901,7 +804,7 @@ void GCodeMarlin::sendFile(QString path)
     emit setQueuedCommands(0, false);
 }
 
-QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
+CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 {
 
     std::cout << "GCodeMarlin::makeLineMarlinFriendly - Input line: " << line.toStdString() << std::endl;
@@ -926,14 +829,14 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
             }
         }
         std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (QString("G1 ") + tmp).toStdString() << std::endl;
-        return QString("G1 ") + tmp;
+        return new GCodeCommand(1, tmp, controlParams.fourthAxisType);//QString("G1 ") + tmp;
     }
 
     if (tmp.at(0) == 'X' || tmp.at(0) == 'Y' || tmp.at(0) == 'Z')
     {
         //This is a modal command. Marlin does not support modal command, so prepend the last Gcommand seen.
         std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (lastGCommand + QString(" ") + tmp).toStdString() << std::endl;
-        return lastGCommand + QString(" ") + tmp;
+        return new GCodeCommand(lastGCommand, tmp, controlParams.fourthAxisType);// + QString(" ") + tmp;
     }
 
 
@@ -953,7 +856,7 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
             bool ok = false;
             int commandCode = list.at(1).toInt(&ok);
 
-            lastGCommand = "G" + QString::number(commandCode);
+            lastGCommand = commandCode;
 
             QString parameters = list.at(2);
             if (commandCode == 0)
@@ -962,8 +865,11 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                 {
                     //There is no F parameter, just append it.
                     manualFeedSetted = true;
-                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(g0feed)).toStdString() << std::endl;
-                    return tmp + " F" + QString().setNum(g0feed);
+
+                    GCodeCommand * c = new GCodeCommand(0, parameters, controlParams.fourthAxisType);
+                    c->setF(g0feed);
+                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine G0 : " << c->toString().toStdString() << std::endl;
+                    return c;// tmp + " F" + QString().setNum(g0feed);
                 }
 
             } else if (commandCode == 1)
@@ -973,8 +879,11 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                 {
                     //Restore the last saved feed
                     manualFeedSetted = false;
-                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (tmp + " F" + QString().setNum(lastExplicitFeed)).toStdString() << std::endl;
-                    return tmp + " F" + QString().setNum(lastExplicitFeed);
+
+                    GCodeCommand * c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
+                    c->setF(lastExplicitFeed);
+                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine G1: " << c->toString().toStdString() << std::endl;
+                    return c;//tmp + " F" + QString().setNum(lastExplicitFeed);
                 } else if (i >= 0)
                 {
                     QRegExp exp("F(\\d+\\.*\\d*)");//Can feed speed be negative? if so, then change the regex by "F(-*\\d+\\.*\\d*)"
@@ -986,96 +895,58 @@ QString GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                         if (ok)
                             lastExplicitFeed = feed;
                     }
+                } else {
+                    //Normal G1 command without F but with no manual feed setted also.
+                    GCodeCommand *c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
+                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine G1_noF: " << c->toString().toStdString() << std::endl;
+                    return c;
                 }
+            } else {
+                GCodeCommand *c = new GCodeCommand(commandCode, parameters, controlParams.fourthAxisType);
+                std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine GXX: " << c->toString().toStdString() << std::endl;
+                return c;
             }
         }
 
 
     }
 
-    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << line.toStdString() << std::endl;
-    return line;
+    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine M: " << line.toStdString() << std::endl;
+    MCodeCommand *m = NULL;
+    try{
+        m = new MCodeCommand(line);
+    } catch (CodeCommandException &e)
+    {
+        addList(e.getMessage().append(":").append(line));
+        m = NULL;
+    }
+
+    return m;
 }
 
-QStringList GCodeMarlin::levelLine(const QString &command)
+QList<CodeCommand *> GCodeMarlin::levelLine(CodeCommand* command)
 {
-    static double lastX = 0;
-    static double lastY = 0;
-    static double lastZ = 0;
-    QString tmp = command.trimmed();
-    QStringList resultList;
-    tmp = tmp.toUpper();
-    QRegExp rx("G(\\d+)(.*)");
+    QList<CodeCommand*> resultList;
 
-    if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
+    if (command->getType() == CodeCommand::G_COMMAND && (command->getCommand() == 0 || command->getCommand() == 1))
     {
-        QStringList list = rx.capturedTexts();
-        bool ok = false;
-        int commandCode = list.at(1).toInt(&ok);
-        QString parameters = list.at(2);
+        GCodeCommand* gCommand = static_cast<GCodeCommand*>(command);
+        Point lastPoint(lastLevelingPoint);
 
-        if (commandCode != 0 && commandCode != 1)
-        {
-            resultList.append(command);
-            return resultList;
-        }
-
-        Point lastPoint(lastX, lastY, lastZ);
-
-        bool hasX = false;
-        if (parameters.indexOf("X") >= 0)
-        {
-            hasX = true;
-            QRegExp exp("X(-*\\d+\\.*\\d*)");
-            if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
-            {
-                QStringList lst = exp.capturedTexts();
-                ok = false;
-                double newX = lst.at(1).toDouble(&ok);
-                if (ok)
-                    lastX = newX;
-            }
-        }
-
-        bool hasY = false;
-        if (parameters.indexOf("Y") >= 0)
-        {
-            hasY = true;
-            QRegExp exp("Y(-*\\d+\\.*\\d*)");
-            if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
-            {
-                QStringList lst = exp.capturedTexts();
-                ok = false;
-                double newY = lst.at(1).toDouble(&ok);
-                if (ok)
-                    lastY = newY;
-            }
-        }
-
-        bool hasZ = false;
-        if (parameters.indexOf("Z") >= 0)
-        {
-            hasZ = true;
-            QRegExp exp("Z(-*\\d+\\.*\\d*)");
-            if (exp.indexIn(parameters) != -1 && rx.captureCount() > 0)
-            {
-                QStringList lst = exp.capturedTexts();
-                ok = false;
-                double newZ = lst.at(1).toDouble(&ok);
-                if (ok)
-                    lastZ = newZ;
-            }
-        }
+        bool hasX, hasY, hasZ;
+        hasX = gCommand->getX(lastLevelingPoint.x);
+        hasY = gCommand->getY(lastLevelingPoint.y);
+        hasZ = gCommand->getZ(lastLevelingPoint.z);
 
         //TODO think about what to do with the fourth axis.
-        if (!hasX && !hasY && !hasZ)
+        if (!(hasX | hasY | hasZ))
         {
             //The command has only F or F and Fourth
             resultList.append(command);
             return resultList;
         }
 
-        Point newPoint(lastX, lastY, lastZ);
+        Point newPoint(lastLevelingPoint);
 
         //Clear the Z component to calculate the distance between points in the XY plane only.
         Point lastPointNoZ = lastPoint;
@@ -1118,44 +989,20 @@ QStringList GCodeMarlin::levelLine(const QString &command)
         newPoint.z += delta;
         newPoint.z -= controlParams.zLevelingOffset;
 
-        pointList.append(newPoint);
-
         std::cout << __FUNCTION__ << " - Segment last point: (" << newPoint.x << "," << newPoint.y<<","<<newPoint.z<<")"<<std::endl;
 
-        QStringList components = tmp.split(" ", QString::SkipEmptyParts);
-
-        QString g,c,fourth,f;
-
-        foreach (c, components)
-        {
-            if (c.at(0) == 'G'){
-                g = c;
-            } else if (c.at(0) == 'F') {
-                f = c;
-            } else if (c.at(0) == controlParams.fourthAxisType){
-                fourth = c;
-            }
-        }
-
+        //Create a new command for every intermediate point.
         Point tmpPoint;
         foreach(tmpPoint, pointList){
-            QString newCmd = "";
-            newCmd.append(g).append(" ");
-            newCmd.append("X").append(QString::number(tmpPoint.x)).append(" ");
-            newCmd.append("Y").append(QString::number(tmpPoint.y)).append(" ");
-            newCmd.append("Z").append(QString::number(tmpPoint.z)).append(" ");
-
-            if (!fourth.isEmpty())
-            {
-                newCmd.append(fourth).append(" ");
-            }
-            if (!f.isEmpty())
-            {
-                newCmd.append(f);
-            }
-            std::cout << __FUNCTION__ << " - Generated command: " << newCmd.toStdString() << std::endl;
-            resultList.append(newCmd);
+            GCodeCommand *c = new GCodeCommand(*gCommand);
+            c->setPoint(tmpPoint);
+            std::cout << __FUNCTION__ << " - Generated intermediate command: " << c->toString().toStdString() << std::endl;
+            resultList.append(c);
         }
+        //Lastly modify the original command with the Z and add it to the list.
+        gCommand->setPoint(newPoint);
+        std::cout << __FUNCTION__ << " - Generated last command: " << gCommand->toString().toStdString() << std::endl;
+        resultList.append(gCommand);
 
         std::cout << __FUNCTION__ << " - Generated: " << resultList.size() << " new lines " << std::endl;
 
@@ -1166,53 +1013,24 @@ QStringList GCodeMarlin::levelLine(const QString &command)
     return resultList;
 }
 
-void GCodeMarlin::computeCoordinates(const QString &command)
+void GCodeMarlin::computeCoordinates(const CodeCommand &command)
 {
-    QString tmp = command.trimmed();
-    tmp = tmp.toUpper();
-
-    QRegExp rx("G(\\d+)(.*)");
-
-    if (rx.indexIn(tmp) != -1 && rx.captureCount() > 0)
+    if (command.getType() == CodeCommand::G_COMMAND
+            && (command.getCommand() == 0
+                || command.getCommand() == 1
+                || command.getCommand() == 2
+                || command.getCommand() == 3))
     {
-        QStringList list = rx.capturedTexts();
-        bool ok = false;
-        int commandCode = list.at(1).toInt(&ok);
-        QString parameters = list.at(2);
+        const GCodeCommand &gCommand = static_cast<const GCodeCommand&>(command);
+        gCommand.getX(machineCoord.x);
+        gCommand.getX(workCoord.x);
+        gCommand.getY(machineCoord.y);
+        gCommand.getY(workCoord.y);
+        gCommand.getZ(machineCoord.z);
+        gCommand.getZ(workCoord.z);
 
-        //In marlin we can not pull for position, because that means to break the command buffer in the firmware,
-        //and that breaks the look ahead functionality, so we manually parse the GCode, and guess the coordinates from there.
-
-        //TODO Add coordinate parsing for G2 and G3 commands. I guess that the simplest way to do so is to calculate the arc end coordinate.
-        if (commandCode == 0 || commandCode == 1)
-        {
-            QStringList components = parameters.split(" ", QString::SkipEmptyParts);
-            QString c;
-            foreach (c, components)
-            {
-                float num = c.right(c.size()-1).toFloat();
-                if (c.at(0) == 'X')
-                {
-                    machineCoord.x = num;
-                    workCoord.x = num;
-                }
-                else if (c.at(0) == 'Y')
-                {
-                    machineCoord.y = num;
-                    workCoord.y = num;
-                }
-                else if (c.at(0) == 'Z')
-                {
-                    machineCoord.z = num;
-                    workCoord.z = num;
-                }
-            }
-
-            emit updateCoordinates(machineCoord, workCoord);
-            emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
-        }
-
-
+        emit updateCoordinates(machineCoord, workCoord);
+        emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
     }
 }
 
@@ -1685,32 +1503,6 @@ void GCodeMarlin::gotoXYZFourth(QString line)
 
     if (sendGcodeLocal(line))
     {
-        line = line.toUpper();
-
-        bool moveDetected = false;
-
-        QStringList list = line.split(QRegExp("[\\s]+"));
-        for (int i = 0; i < list.size(); i++)
-        {
-            QString item = getMoveAmountFromString("X", list.at(i));
-            moveDetected = item.length() > 0;
-
-            item = getMoveAmountFromString("Y", list.at(i));
-            moveDetected = item.length() > 0;
-
-            item = getMoveAmountFromString("Z", list.at(i));
-            moveDetected = item.length() > 0 ;
-            if (numaxis == MAX_AXIS_COUNT)  {
-                item = getMoveAmountFromString(QString(controlParams.fourthAxisType), list.at(i));
-                moveDetected = item.length() > 0;
-            }
-        }
-
-        if (!moveDetected)
-        {
-            //emit addList("No movement expected for command.");
-        }
-
         pollPosWaitForIdle();
     }
     else
@@ -1723,15 +1515,6 @@ void GCodeMarlin::gotoXYZFourth(QString line)
     emit setCommandText("");
 }
 
-
-QString GCodeMarlin::getMoveAmountFromString(QString prefix, QString item)
-{
-    int index = item.indexOf(prefix);
-    if (index != -1)
-        return item.mid(index + 1);
-
-    return "";
-}
 
 void GCodeMarlin::axisAdj(char axis, float coord, bool inv, bool absoluteAfterAxisAdj, int sZC)
 {
@@ -1849,12 +1632,6 @@ void GCodeMarlin::setUnitsTypeDisplay(bool millimeters)
     }
 }
 
-void GCodeMarlin::clearToHome()
-{
-    maxZ = 0;
-    motionOccurred = false;
-}
-
 int GCodeMarlin::getNumaxis()
 {
     return numaxis;
@@ -1968,6 +1745,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
     double zSafeCoord = 0;
 
     pollPosWaitForIdle();
+    emit updateCoordinates(machineCoord, workCoord);
 
     for (int i = 0; i < xSteps; i++)
     {
@@ -1986,6 +1764,11 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
                               append(QString::number(xValues[i])).
                               append(" Y").
                               append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
+            machineCoord.x = xValues[i];
+            machineCoord.y = yValues[j];
+            workCoord.x = machineCoord.x;
+            workCoord.y = machineCoord.y;
+            emit updateCoordinates(machineCoord, workCoord);
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
@@ -1994,6 +1777,9 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             }
             zValues[j*xSteps + i] = zCoord;
             zSafeCoord = zCoord + zSafe;
+            machineCoord.z = zCoord;
+            workCoord.z = zCoord;
+            emit updateCoordinates(machineCoord, workCoord);
             cout << __FUNCTION__ << " - ----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
             progress++;
@@ -2017,6 +1803,11 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
                               append(QString::number(xValues[i])).
                               append(" Y").
                               append(QString::number(yValues[j])).append(" F").append(QString::number(speed)), res, false, 0);
+            machineCoord.x = xValues[i];
+            machineCoord.y = yValues[j];
+            workCoord.x = machineCoord.x;
+            workCoord.y = machineCoord.y;
+            emit updateCoordinates(machineCoord, workCoord);
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
@@ -2025,6 +1816,9 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             }
             zValues[j*xSteps + i] = zCoord;
             zSafeCoord = zCoord + zSafe;
+            machineCoord.z = zCoord;
+            workCoord.z = zCoord;
+            emit updateCoordinates(machineCoord, workCoord);
             cout << __FUNCTION__ << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
             progress++;
@@ -2052,6 +1846,9 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
     //Return to 0.0
     sendGcodeLocal("G28 Z0\r");
     sendGcodeLocal(QString("G0 X0 Y0 F").append(QString::number(speed)).append("\r"));
+    pollPosWaitForIdle();
+    pollPosWaitForIdle();
+    emit updateCoordinates(machineCoord, workCoord);
 }
 
 bool GCodeMarlin::isZInterpolatorReady()

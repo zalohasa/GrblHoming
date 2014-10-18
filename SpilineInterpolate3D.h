@@ -1,6 +1,13 @@
 #ifndef SPILINEINTERPOLATE_H
 #define SPILINEINTERPOLATE_H
 
+/*
+ * Catmull-Rom Bicubic spiline interpolator class.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 #include "interpolator.h"
 
 class SpilineInterpolate3D : public Interpolator

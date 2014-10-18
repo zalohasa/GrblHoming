@@ -2,6 +2,13 @@
 #include <iostream>
 #include <string.h>
 
+/*
+ * Mock interpolator to support simple tool height auto adjust.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
 using std::cout;
 using std::endl;
 

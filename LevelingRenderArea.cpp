@@ -1,5 +1,13 @@
 #include "LevelingRenderArea.h"
 
+/*
+ * Leveling render area to display the Z leveling data in a visual way.
+ *
+ * Gonzalo López 2014
+ *
+ */
+
+
 #include <QPainter>
 #include <QLinearGradient>
 #include <iostream>
