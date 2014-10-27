@@ -17,7 +17,8 @@
 #include <QMutexLocker>
 
 #define IMAGE_MARGIN 6
-#define ELLIPSE_SIZE 6
+#define ELLIPSE_SIZE 8
+#define TEXT_MARGIN_Z 4
 
 using std::cout;
 using std::endl;
@@ -27,14 +28,12 @@ LevelingRenderArea::LevelingRenderArea(QWidget *parent)
     : QWidget(parent)
 {
     interpolator = NULL;
+    //this->setSizePolicy(QSizePolicy::Expanding);
+    drawAxis = false;
+    setCursor(Qt::CrossCursor);
 
     connect(&thread, SIGNAL(renderedImage(QImage)), this, SLOT(updatePixmap(QImage)));
 
-}
-
-QSize LevelingRenderArea::minimumSizeHint() const
-{
-    return QSize(100, 100);
 }
 
 QSize LevelingRenderArea::sizeHint() const
@@ -46,7 +45,7 @@ void LevelingRenderArea::resizeEvent(QResizeEvent *)
 {
     QSize s;
     s.setWidth(size().width() - (IMAGE_MARGIN*2));
-    s.setHeight(size().height() - (IMAGE_MARGIN*2));
+    s.setHeight(size().height() - (IMAGE_MARGIN*4));
     pixmap = QPixmap();
     thread.render(this->interpolator, s);
     this->update();
@@ -58,7 +57,7 @@ void LevelingRenderArea::setInterpolator(const Interpolator *interpolator)
     pixmap = QPixmap();
     QSize s;
     s.setWidth(size().width() - (IMAGE_MARGIN*2));
-    s.setHeight(size().height() - (IMAGE_MARGIN*2));
+    s.setHeight(size().height() - (IMAGE_MARGIN*4));
     thread.render(interpolator, s);
     this->update();
 }
@@ -66,6 +65,27 @@ void LevelingRenderArea::setInterpolator(const Interpolator *interpolator)
 void LevelingRenderArea::updatePixmap(const QImage &image)
 {
     pixmap = QPixmap::fromImage(image);
+    update();
+}
+
+void LevelingRenderArea::enterEvent(QEvent *event)
+{
+    Q_UNUSED(event);
+    setMouseTracking(true);
+    drawAxis = true;
+}
+
+void LevelingRenderArea::leaveEvent(QEvent *event)
+{
+    Q_UNUSED(event);
+    setMouseTracking(false);
+    drawAxis = false;
+    update();
+}
+
+void LevelingRenderArea::mouseMoveEvent(QMouseEvent *event)
+{
+    mousePoint = event->pos();
     update();
 }
 
@@ -95,6 +115,73 @@ void LevelingRenderArea::paintEvent(QPaintEvent * /* event */)
 
     painter.drawPixmap(QPoint(IMAGE_MARGIN,IMAGE_MARGIN), pixmap);
 
+    //Draw the min/max text.
+    painter.drawText(QRect(IMAGE_MARGIN + ELLIPSE_SIZE, IMAGE_MARGIN+pixmap.height()- ELLIPSE_SIZE, pixmap.width() - (ELLIPSE_SIZE*2),
+                           height() - (IMAGE_MARGIN+pixmap.height()- ELLIPSE_SIZE)),
+                     Qt::AlignCenter,
+                     QString("Min: ").append(QString::number(interpolator->getMinZValue()))
+                     .append(" - Max: ").append(QString::number(interpolator->getMaxZValue()))
+                     .append(" - Difference: ").append(QString::number(interpolator->getMaxZValue() - interpolator->getMinZValue())));
+
+    //Draw the crosshair and the Z level value text.
+    if (drawAxis && mousePoint.x() >= IMAGE_MARGIN + ELLIPSE_SIZE
+            && mousePoint.x()<=pixmap.width()-ELLIPSE_SIZE+IMAGE_MARGIN
+            && mousePoint.y() >= IMAGE_MARGIN + ELLIPSE_SIZE
+            && mousePoint.y() <= pixmap.height()-ELLIPSE_SIZE+IMAGE_MARGIN)
+    {
+        double i = mousePoint.x() - IMAGE_MARGIN;
+        double j = mousePoint.y() - IMAGE_MARGIN;
+
+        painter.setPen(QPen(Qt::black, 1, Qt::DotLine));
+        painter.drawLine(QPoint(mousePoint.x(), IMAGE_MARGIN+ELLIPSE_SIZE), QPoint(mousePoint.x(), IMAGE_MARGIN+pixmap.height()- ELLIPSE_SIZE));
+        painter.drawLine(QPoint(IMAGE_MARGIN+ELLIPSE_SIZE, mousePoint.y()), QPoint(IMAGE_MARGIN + pixmap.width() - ELLIPSE_SIZE, mousePoint.y()));
+
+        double remappedI = RenderThread::remap(double(i), ELLIPSE_SIZE, pixmap.width() - ELLIPSE_SIZE - 1, 0, interpolator->getXValue(interpolator->getXSteps() - 1));
+        double remappedJ = RenderThread::remap(double((pixmap.height() - 1)-j), ELLIPSE_SIZE, pixmap.height() - ELLIPSE_SIZE - 1, 0, interpolator->getYValue(interpolator->getYSteps() - 1));
+
+        //Do the interpolation
+        double zVal;
+        interpolator->interpolate(remappedI, remappedJ, zVal);
+
+        int xText = 0, yText = 0;
+
+        QString text = QString("Z: ").append(QString::number(zVal));
+        QFontMetrics m = painter.fontMetrics();
+        int textWidth = m.width(text);
+        int textHeight = m.height();
+
+        if (i > pixmap.width() - textWidth - ELLIPSE_SIZE - 5)
+        {
+            xText = mousePoint.x() - textWidth - TEXT_MARGIN_Z;
+        }else{
+            xText = mousePoint.x() + TEXT_MARGIN_Z;
+        }
+
+        if (j < textHeight + ELLIPSE_SIZE + 5)
+        {
+            yText = mousePoint.y() + textHeight;
+        }else{
+            yText = mousePoint.y() - TEXT_MARGIN_Z;
+        }
+
+        QString yDataText = QString("Y: ").append(QString::number(remappedJ));
+        QString xDataText = QString("X: ").append(QString::number(remappedI));
+        int yTextWidth = m.width(yDataText);
+
+        //Z value text
+        painter.drawText(QPoint(xText, yText), text);
+
+        //X and Y value text
+        if(j <= (IMAGE_MARGIN+pixmap.height()- ELLIPSE_SIZE) - textHeight - 10)
+            painter.drawText(QPoint(xText, (IMAGE_MARGIN+pixmap.height()- ELLIPSE_SIZE)-TEXT_MARGIN_Z), xDataText);
+        if (j > IMAGE_MARGIN + ELLIPSE_SIZE + textHeight + TEXT_MARGIN_Z + 10)
+            painter.drawText(QPoint(xText, IMAGE_MARGIN + ELLIPSE_SIZE + textHeight), xDataText);
+        if (i > yTextWidth + IMAGE_MARGIN + ELLIPSE_SIZE+TEXT_MARGIN_Z + 10)
+            painter.drawText(QPoint(IMAGE_MARGIN + ELLIPSE_SIZE+TEXT_MARGIN_Z, yText), yDataText);
+        if (i < IMAGE_MARGIN + pixmap.width() - ELLIPSE_SIZE - yTextWidth - textWidth - TEXT_MARGIN_Z - 10)
+            painter.drawText(QPoint(IMAGE_MARGIN + pixmap.width() - ELLIPSE_SIZE - yTextWidth - TEXT_MARGIN_Z, yText), yDataText);
+
+    }
 }
 
 double RenderThread::remap(double value, double low1, double high1, double low2, double high2)

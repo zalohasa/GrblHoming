@@ -1903,6 +1903,7 @@ int GCodeGrbl::getNumaxis()
 
 void GCodeGrbl::performZLeveling(int levelingAlgorithm, QRect rect, int xSteps, int ySteps, double zStarting, double speed, double zSafe, double offset)
 {
+    Q_UNUSED(levelingAlgorithm) Q_UNUSED(rect) Q_UNUSED(ySteps) Q_UNUSED(zStarting) Q_UNUSED(speed) Q_UNUSED(zSafe) Q_UNUSED(offset)
     QString msg("Grbl gcode implementation does not support ZLeveling yet");
     emit addList(msg);
     emit sendMsg(msg);

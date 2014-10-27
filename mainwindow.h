@@ -181,6 +181,7 @@ private slots:
     void levelingAlgorithmChanged(int);
     void recomputeOffset();
     void recomputeOffsetEnded(double newOffset);
+    void test();
 
 
 private:

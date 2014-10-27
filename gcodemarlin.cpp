@@ -1842,6 +1842,10 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
         }
     }
 
+    delete [] xValues;
+    delete [] yValues;
+    delete [] zValues;
+
     emit levelingEnded();
     //Return to 0.0
     sendGcodeLocal("G28 Z0\r");

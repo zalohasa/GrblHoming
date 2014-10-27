@@ -70,13 +70,15 @@ class LevelingRenderArea : public QWidget
 public:
     LevelingRenderArea(QWidget *parent = 0);
 
-    QSize minimumSizeHint() const;
     QSize sizeHint() const;
 
 public slots:
     void setInterpolator(const Interpolator *interpolator);
 
 protected:
+    void enterEvent(QEvent *event);
+    void leaveEvent(QEvent *event);
+    void mouseMoveEvent(QMouseEvent *event);
     void paintEvent(QPaintEvent * event);
     void resizeEvent(QResizeEvent *);
 
@@ -87,7 +89,9 @@ private slots:
     void updatePixmap(const QImage &image);
 private:
     RenderThread thread;
+    bool drawAxis;
     QPixmap pixmap;
+    QPoint mousePoint;
 
 };
 

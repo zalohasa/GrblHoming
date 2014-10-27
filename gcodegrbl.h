@@ -91,8 +91,8 @@ public slots:
     bool isZInterpolatorReady();
     void clearLevelingData();
     const Interpolator * getInterpolator(){ return NULL;} //TODO implement
-    void changeInterpolator(int index) {}//TODO implement
-    void recomputeOffset(double speed, double zStarting) {}
+    void changeInterpolator(int index) {Q_UNUSED(index)}//TODO implement
+    void recomputeOffset(double speed, double zStarting) {Q_UNUSED(speed) Q_UNUSED(zStarting)}
 
 protected:
     void timerEvent(QTimerEvent *event);
