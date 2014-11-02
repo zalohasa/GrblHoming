@@ -512,7 +512,7 @@ bool GCodeMarlin::waitForStartupBanner(QString& result, int waitSec, bool failOn
 
 void GCodeMarlin::parseCoordinates(const QString& received)
 {
-    QString format(".*X:(-*\\d+\\.\\d+)Y:(-*\\d+\\.\\d+)Z:(-*\\d+\\.\\d+).*");
+    QString format(".*X:(-*\\d+\\.\\d+) *Y:(-*\\d+\\.\\d+) *Z:(-*\\d+\\.\\d+).*");
     QRegExp rx = QRegExp(format);
 
     if (rx.indexIn(received) != -1 && rx.captureCount() > 0)
@@ -1639,7 +1639,7 @@ int GCodeMarlin::getNumaxis()
 
 bool GCodeMarlin::probeResultToValue(const QString & result, double &zCoord)
 {
-    QRegExp rx("Z:(-*\\d+\\.\\d+)");
+    QRegExp rx("Z: *(-*\\d+\\.\\d+)");
     if (rx.indexIn(result) != -1 && rx.captureCount() > 0)
     {
         QStringList list = rx.capturedTexts();

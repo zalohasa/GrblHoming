@@ -127,7 +127,6 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->btnCancelLeveling, SIGNAL(clicked()), this, SLOT(stopLeveling()));
     connect(ui->btnClearLeveling, SIGNAL(clicked()), this, SLOT(clearLevelingData()));
     connect(ui->btnRecomputeOffset, SIGNAL(clicked()), this, SLOT(recomputeOffset()));
-    connect(ui->testButton, SIGNAL(clicked()), this, SLOT(test()));
     connect(ui->btnClearStatusList, SIGNAL(clicked()), ui->statusList, SLOT(clear()));
     connect(ui->verticalSliderZJog,SIGNAL(valueChanged(int)),this,SLOT(zJogSliderDisplay(int)));
     connect(ui->verticalSliderZJog,SIGNAL(sliderPressed()),this,SLOT(zJogSliderPressed()));
@@ -491,39 +490,6 @@ void MainWindow::grblUnlock()
 void MainWindow::goHomeSafe()
 {
     emit goToHome();
-}
-
-void MainWindow::test()
-{
-    double * xValues = new double[3];
-    double * yValues = new double[3];
-    double * zValues = new double[3 * 3];
-
-    xValues[0] = 0;
-    xValues[1] = 10;
-    xValues[2] = 20;
-
-    yValues[0] = 0;
-    yValues[1] = 10;
-    yValues[2] = 20;
-
-    zValues[0] = 18.0;
-    zValues[1] = 18.1;
-    zValues[2] = 18.2;
-    zValues[3] = 18.3;
-    zValues[4] = 18.3;
-    zValues[5] = 18.4;
-    zValues[6] = 18.3;
-    zValues[7] = 18.2;
-    zValues[8] = 18.1;
-
-    SpilineInterpolate3D *interpolator = new SpilineInterpolate3D(xValues, 3, yValues, 3, zValues, 0);
-    ui->levelingRenderArea->setInterpolator(interpolator);
-
-    delete [] xValues;
-    delete [] yValues;
-    delete [] zValues;
-
 }
 
 void MainWindow::setLevelingEnded()
