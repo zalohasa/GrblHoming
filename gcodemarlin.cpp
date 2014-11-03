@@ -26,8 +26,7 @@
 //The minimal grid size will be divided by this number to get the max segment size.
 #define SEGMENT_SIZE_DIVIDER 3
 
-using std::cout;
-using std::endl;
+#define debug(format, ...) diag("%s - " format, __FUNCTION__, ##__VA_ARGS__)
 
 GCodeMarlin::GCodeMarlin()
     : errorCount(0), doubleDollarFormat(false),
@@ -542,7 +541,7 @@ void GCodeMarlin::parseCoordinates(const QString& received)
                  );
 
         emit updateCoordinates(machineCoord, workCoord);
-        emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
+        emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm, true);//TODO revise the true. See grbl implementation.
     }
 }
 
@@ -597,8 +596,6 @@ void GCodeMarlin::timerEvent(QTimerEvent *event)
 
 void GCodeMarlin::sendFile(QString path)
 {
-
-    std::cout << " ---------- INIT SENDING FILE -------------- " << std::endl;
     addList(QString(tr("Sending file '%1'")).arg(path));
 
     //Set absolute coordinates
@@ -640,7 +637,7 @@ void GCodeMarlin::sendFile(QString path)
         do
         {
             QString strline = code.readLine();
-            std::cout << "GCodeMarlin::sendFile - Input line: " << strline.toStdString() << std::endl;
+            debug("Input line: %s", strline.toStdString().c_str());
 
             emit setVisCurrLine(currLine + 1);
 
@@ -719,7 +716,7 @@ void GCodeMarlin::sendFile(QString path)
                     }
                 }
             } else {
-                std::cout << "GCodeMarlin::sendFile - No output line " << std::endl;
+                debug("No output line ");
             }
 
             float percentComplete = (currLine * 100.0) / totalLineCount;
@@ -807,7 +804,7 @@ void GCodeMarlin::sendFile(QString path)
 CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 {
 
-    std::cout << "GCodeMarlin::makeLineMarlinFriendly - Input line: " << line.toStdString() << std::endl;
+    debug("Input line: %s", line.toStdString().c_str());
 
     //TODO make this value a config option.
     float g0feed = 300;
@@ -828,14 +825,14 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                 lastExplicitFeed = feed;
             }
         }
-        std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (QString("G1 ") + tmp).toStdString() << std::endl;
+       debug("OutLine: %s", (QString("G1 ") + tmp).toStdString().c_str());
         return new GCodeCommand(1, tmp, controlParams.fourthAxisType);//QString("G1 ") + tmp;
     }
 
     if (tmp.at(0) == 'X' || tmp.at(0) == 'Y' || tmp.at(0) == 'Z')
     {
         //This is a modal command. Marlin does not support modal command, so prepend the last Gcommand seen.
-        std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine: " << (lastGCommand + QString(" ") + tmp).toStdString() << std::endl;
+        debug("OutLine: %s", (lastGCommand + QString(" ") + tmp).toStdString().c_str());
         return new GCodeCommand(lastGCommand, tmp, controlParams.fourthAxisType);// + QString(" ") + tmp;
     }
 
@@ -868,7 +865,7 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 
                     GCodeCommand * c = new GCodeCommand(0, parameters, controlParams.fourthAxisType);
                     c->setF(g0feed);
-                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine G0 : " << c->toString().toStdString() << std::endl;
+                    debug("OutLine G0 : %s", c->toString().toStdString().c_str());
                     return c;// tmp + " F" + QString().setNum(g0feed);
                 }
 
@@ -882,7 +879,7 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 
                     GCodeCommand * c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
                     c->setF(lastExplicitFeed);
-                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine G1: " << c->toString().toStdString() << std::endl;
+                    debug("OutLine G1: %s", c->toString().toStdString().c_str());
                     return c;//tmp + " F" + QString().setNum(lastExplicitFeed);
                 } else if (i >= 0)
                 {
@@ -898,12 +895,12 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                 } else {
                     //Normal G1 command without F but with no manual feed setted also.
                     GCodeCommand *c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
-                    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine G1_noF: " << c->toString().toStdString() << std::endl;
+                    debug("OutLine G1_noF: %s", c->toString().toStdString().c_str());
                     return c;
                 }
             } else {
                 GCodeCommand *c = new GCodeCommand(commandCode, parameters, controlParams.fourthAxisType);
-                std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine GXX: " << c->toString().toStdString() << std::endl;
+                debug("OutLine GXX: %s", c->toString().toStdString().c_str());
                 return c;
             }
         }
@@ -911,7 +908,7 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 
     }
 
-    std::cout << "GCodeMarlin::makeLineMarlinFriendly - OutLine M: " << line.toStdString() << std::endl;
+    debug("OutLine M: %s", line.toStdString().c_str());
     MCodeCommand *m = NULL;
     try{
         m = new MCodeCommand(line);
@@ -955,18 +952,18 @@ QList<CodeCommand *> GCodeMarlin::levelLine(CodeCommand* command)
         newPointNoZ.z = 0;
         double lenght = Distance(lastPointNoZ, newPointNoZ);
 
-        std::cout << __FUNCTION__ << " - Old point: (" << lastPoint.x << "," << lastPoint.y << "," << lastPoint.z << ") - New Point: ("
-                  << newPoint.x << ","<< newPoint.y << ","<<newPoint.z << ")" << std::endl;
+        debug("Old point: (%.2f,%.2f,%.2f) - New Point: (%.2f,%.2f,%.2f)", lastPoint.x, lastPoint.y, lastPoint.z,
+              newPoint.x, newPoint.y, newPoint.z);
 
         QList<Point> pointList;
 
         double maxSegmentSize = fmin(interpolator->xGridSize(), interpolator->yGridSize()) * (1.0/SEGMENT_SIZE_DIVIDER);
-        std::cout << __FUNCTION__ << " - Segment size: " << lenght << " Max segment size: " << maxSegmentSize << std::endl;
+        debug("Segment size: %.3f Max segment size: %.3f", lenght, maxSegmentSize);
         //If the distance between the old point and the new one is bigger than the threshold, split the segment.
         if (lenght > maxSegmentSize)
         {
             int segmentCount = ceil(lenght / maxSegmentSize);
-            std::cout << __FUNCTION__ << " - Splitting segment in " << segmentCount << std::endl;
+            debug("Splitting segment in %d", segmentCount);
             double segmentSize = lenght / segmentCount;
 
             Vector d = newPoint - lastPoint;
@@ -980,7 +977,7 @@ QList<CodeCommand *> GCodeMarlin::levelLine(CodeCommand* command)
                 dst.z += delta;
                 dst.z -= controlParams.zLevelingOffset;
                 pointList.append(dst);
-                std::cout << __FUNCTION__ << " - Segment intermediate point: (" << dst.x << ","<<dst.y<<","<<dst.z<<")"<<std::endl;
+                debug("Segment intermediate point: (%.2f,%.2f,%.2f)", dst.x, dst.y, dst.z);
             }
         }
 
@@ -989,22 +986,22 @@ QList<CodeCommand *> GCodeMarlin::levelLine(CodeCommand* command)
         newPoint.z += delta;
         newPoint.z -= controlParams.zLevelingOffset;
 
-        std::cout << __FUNCTION__ << " - Segment last point: (" << newPoint.x << "," << newPoint.y<<","<<newPoint.z<<")"<<std::endl;
+        debug("Segment last point: (%.2f,%.2f,%.2f)",newPoint.x, newPoint.y, newPoint.z);
 
         //Create a new command for every intermediate point.
         Point tmpPoint;
         foreach(tmpPoint, pointList){
             GCodeCommand *c = new GCodeCommand(*gCommand);
             c->setPoint(tmpPoint);
-            std::cout << __FUNCTION__ << " - Generated intermediate command: " << c->toString().toStdString() << std::endl;
+            debug("Generated intermediate command: %s", c->toString().toStdString().c_str());
             resultList.append(c);
         }
         //Lastly modify the original command with the Z and add it to the list.
         gCommand->setPoint(newPoint);
-        std::cout << __FUNCTION__ << " - Generated last command: " << gCommand->toString().toStdString() << std::endl;
+        debug("Generated last command: %s", gCommand->toString().toStdString().c_str());
         resultList.append(gCommand);
 
-        std::cout << __FUNCTION__ << " - Generated: " << resultList.size() << " new lines " << std::endl;
+        debug("Generated: %d new lines", resultList.size());
 
         return resultList;
     }
@@ -1030,7 +1027,7 @@ void GCodeMarlin::computeCoordinates(const CodeCommand &command)
         gCommand.getZ(workCoord.z);
 
         emit updateCoordinates(machineCoord, workCoord);
-        emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm);
+        emit setLivePoint(workCoord.x, workCoord.y, controlParams.useMm, true);//TODO revise the true. Check the grbl implementation
     }
 }
 
@@ -1659,7 +1656,7 @@ bool GCodeMarlin::probeResultToValue(const QString & result, double &zCoord)
 
 void GCodeMarlin::recomputeOffset(double speed, double zStarting)
 {
-    cout << __FUNCTION__ << " - Recalculating offset" << endl;
+    debug("Recalculating offset");
     if (interpolator == NULL)
     {
         return;
@@ -1675,11 +1672,11 @@ void GCodeMarlin::recomputeOffset(double speed, double zStarting)
 
 
     sendGcodeInternal("G30", res, false, 0);
-    cout << __FUNCTION__ << " - Result: " << res.toStdString() << endl;
+    debug("Result: %s", res.toStdString().c_str());
 
     if (!probeResultToValue(res, zCoord))
     {
-        cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE" << endl;
+        debug("ERROR CONVERTING ZCOORDINATE");
         return;
     }
 
@@ -1689,7 +1686,7 @@ void GCodeMarlin::recomputeOffset(double speed, double zStarting)
 
 void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSteps, int ySteps, double zStarting, double speed, double zSafe, double offset)
 {
-    cout << __FUNCTION__ << " - Starting Z Leveling procedure" << endl;
+    debug("Starting Z Leveling procedure");
     abortState.set(false);
     if (interpolator != NULL)
     {
@@ -1701,13 +1698,13 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
     double * yValues = new double[ySteps];
     double * zValues = new double[xSteps * ySteps];
 
-    cout << __FUNCTION__ << " - right: " << extent.right() << " left: " << extent.left() << endl;
-    cout << __FUNCTION__ << " - bottom: " << extent.bottom() << " top: " << extent.top() << endl;
+    debug("right: %d left: %d", extent.right(), extent.left());
+    debug("Bottom: %d top: %d", extent.bottom(), extent.top());
 
     double xLenght = extent.right() - extent.left();
     double yLenght = extent.top() - extent.bottom();
 
-    cout << __FUNCTION__ << " - xLenght: " <<xLenght << " ylen: " << yLenght << endl;
+    debug("xLength: %.3f yLen: %.3f", xLenght, yLenght);
 
     double xInterval = xLenght;
     double yInterval = yLenght;
@@ -1718,7 +1715,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
         yInterval = yLenght / (ySteps - 1);
     }
 
-    cout << __FUNCTION__ << " - xInterval: " << xInterval << " yInterval: " << yInterval << endl;
+    debug("xInterval: %.3f yInterval: %.3f", xInterval, yInterval);
 
     for (int i = 0; i<xSteps; i++)
     {
@@ -1759,7 +1756,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             {
                 break;
             }
-            cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
+            debug("Probing in: %.2f-%.2f", xValues[i], yValues[j]);
             sendGcodeInternal(QString("G1 X").
                               append(QString::number(xValues[i])).
                               append(" Y").
@@ -1772,7 +1769,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
-                cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
+                debug("ERROR CONVERTING ZCOORDINATE AT %.2f-%.2f", xValues[i], yValues[j]);
                 return;
             }
             zValues[j*xSteps + i] = zCoord;
@@ -1780,7 +1777,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             machineCoord.z = zCoord;
             workCoord.z = zCoord;
             emit updateCoordinates(machineCoord, workCoord);
-            cout << __FUNCTION__ << " - ----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
+            debug("Probe: %.2f-%.2f-%.2f", xValues[i], yValues[j], zValues[j*xSteps+i]);
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
             progress++;
             levelingProgress(progress);
@@ -1798,7 +1795,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             {
                 break;
             }
-            cout << __FUNCTION__ << " - Probing in: " << xValues[i] << " - " << yValues[j] << endl;
+            debug("Probing in: %.2f-%.2f", xValues[i], yValues[j]);
             sendGcodeInternal(QString("G1 X").
                               append(QString::number(xValues[i])).
                               append(" Y").
@@ -1811,7 +1808,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             sendGcodeInternal("G30", res, false, 0);
             if (!probeResultToValue(res, zCoord))
             {
-                cout << __FUNCTION__ << " - ERROR CONVERTING ZCOORDINATE AT " << xValues[i] <<  " - " << yValues[j] << endl;
+                debug("ERROR CONVERTING ZCOORDINATE AT %f-%f", xValues[i], yValues[j]);
                 return;
             }
             zValues[j*xSteps + i] = zCoord;
@@ -1819,7 +1816,7 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
             machineCoord.z = zCoord;
             workCoord.z = zCoord;
             emit updateCoordinates(machineCoord, workCoord);
-            cout << __FUNCTION__ << "----Probe: " << xValues[i] << " - " << yValues[j] << " - " << zValues[j*xSteps + i] << endl;
+            debug("Probe: %.2f-%.2f-%.2f", xValues[i], yValues[j], zValues[j*xSteps+i]);
             sendGcodeInternal(QString("G1 Z").append(QString::number(zSafeCoord)).append(" F100"), res, false, 0);
             progress++;
             levelingProgress(progress);
@@ -1829,13 +1826,13 @@ void GCodeMarlin::performZLeveling(int levelingAlgorithm, QRect extent, int xSte
     if (!abortState.get())
     {
         if (levelingAlgorithm == Interpolator::SPILINE){
-            cout << __FUNCTION__ << "Creating spiline interpolator" << endl;
+            debug("Creating spiline interpolator");
             interpolator = new SpilineInterpolate3D(xValues, xSteps, yValues, ySteps, zValues, offset);
         }  else if (levelingAlgorithm == Interpolator::LINEAR){
-            cout << __FUNCTION__ << "Creating linear interpolator" << endl;
+            debug("Creating linear interpolator");
             interpolator = new LinearInterpolate3D(xValues, xSteps, yValues, ySteps, zValues, offset);
         } else if (levelingAlgorithm == Interpolator::SINGLE){
-            cout << __FUNCTION__ << "Creating single touch interpolator" << endl;
+            debug("Creating single touch interpolator");
             interpolator = new SingleInterpolate(xValues[0], yValues[0], zValues[0], offset);
         } else {
             //TODO, Wrong interpolator selected.
@@ -1896,7 +1893,7 @@ void GCodeMarlin::changeInterpolator(int index)
         delete interpolator;
         interpolator = t;
     } else {
-        cout << __FUNCTION__ << "Interpolator change not supported. Leaving the original intact" << endl;
+        debug("Interpolator change not supported. Leaving the original intact");
     }
 
     emit levelingEnded();

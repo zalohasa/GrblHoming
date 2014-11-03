@@ -41,33 +41,6 @@ public:
     int getSettingsItemCount();
     int getNumaxis();
 
-signals:
-    void addList(QString line);
-    void addListFull(QStringList list);
-    void addListOut(QString line);
-    void sendMsg(QString msg);
-    void stopSending();
-    void portIsClosed(bool reopen);
-    void portIsOpen(bool sendCode);
-    void setCommandText(QString value);
-    void adjustedAxis();
-    void gcodeResult(int id, QString result);
-    void setProgress(int);
-    void setQueuedCommands(int, bool);
-    void resetTimer(bool timeIt);
-    void enableGrblDialogButton();
-    void updateCoordinates(Coord3D machineCoord, Coord3D workCoord);
-    void setLastState(QString state);
-    void setUnitsWork(QString value);
-    void setUnitsMachine(QString value);
-    void setLivePoint(double x, double y, bool isMM);
-    void setVisCurrLine(int currLine);
-    void setLcdState(bool valid);
-    void setVisualLivenessCurrPos(bool isLiveCP);
-    void levelingProgress(int);
-    void levelingEnded();
-    void recomputeOffsetEnded(double);
-
 public slots:
     void openPort(QString commPortStr, QString baudRate);
     void sendGcode(QString line);

@@ -74,7 +74,7 @@ signals:
     void setLastState(QString state);
     void setUnitsWork(QString value);
     void setUnitsMachine(QString value);
-    void setLivePoint(double x, double y, bool isMM);
+    void setLivePoint(double x, double y, bool isMM, bool isLiveCP);
     void setVisCurrLine(int currLine);
     void setLcdState(bool valid);
     void setVisualLivenessCurrPos(bool isLiveCP);
