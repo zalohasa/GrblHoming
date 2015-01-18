@@ -892,6 +892,11 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                         if (ok)
                             lastExplicitFeed = feed;
                     }
+                    //We need to send the command anyway, because there can be some axis positioning besides the F value
+                    //Normal G1 command with F
+                    GCodeCommand *c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
+                    debug("OutLine G1_F: %s", c->toString().toStdString().c_str());
+                    return c;
                 } else {
                     //Normal G1 command without F but with no manual feed setted also.
                     GCodeCommand *c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
