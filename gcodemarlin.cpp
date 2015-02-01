@@ -839,10 +839,10 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
 
     if (tmp.at(0) == 'G')
     {
-        //A few modifications must be done to G0 and G1 commands.
+        //A few modifications must be done to G0 and G{1,2,3} commands.
         //Marling treats G0 as if it were G1, so the machine will not move at the maximun speed but at the last one.
         //This can cause some problems, so we define a "G0 feed speed", and we append this speed to every G0 command.
-        //This has a side efect, in the next G1 command, Marlin will use the G0 feed speed if no speed is specified, so
+        //This has a side efect, in the next G{1,2,3} command, Marlin will use the G0 feed speed if no speed is specified, so
         //we need to save the last non G0 speed, and manually append it to every G1 command that has no F parameter.
 
         QRegExp rx("G(\\d+)(.*)");
@@ -869,7 +869,7 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                     return c;// tmp + " F" + QString().setNum(g0feed);
                 }
 
-            } else if (commandCode == 1)
+            } else if (commandCode == 1 || commandCode == 2 || commandCode == 3)
             {
                 int i = parameters.indexOf("F");
                 if (i < 0 && manualFeedSetted)
@@ -877,9 +877,9 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                     //Restore the last saved feed
                     manualFeedSetted = false;
 
-                    GCodeCommand * c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
+                    GCodeCommand * c = new GCodeCommand(commandCode, parameters, controlParams.fourthAxisType);
                     c->setF(lastExplicitFeed);
-                    debug("OutLine G1: %s", c->toString().toStdString().c_str());
+                    debug("OutLine G%d: %s",commandCode, c->toString().toStdString().c_str());
                     return c;//tmp + " F" + QString().setNum(lastExplicitFeed);
                 } else if (i >= 0)
                 {
@@ -892,15 +892,17 @@ CodeCommand * GCodeMarlin::makeLineMarlinFriendly(const QString &line)
                         if (ok)
                             lastExplicitFeed = feed;
                     }
+                    //As this command has explicit feed, we can turn off the manual feed flag.
+                    manualFeedSetted = false;
                     //We need to send the command anyway, because there can be some axis positioning besides the F value
                     //Normal G1 command with F
-                    GCodeCommand *c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
-                    debug("OutLine G1_F: %s", c->toString().toStdString().c_str());
+                    GCodeCommand *c = new GCodeCommand(commandCode, parameters, controlParams.fourthAxisType);
+                    debug("OutLine G%d_F: %s", commandCode, c->toString().toStdString().c_str());
                     return c;
                 } else {
                     //Normal G1 command without F but with no manual feed setted also.
-                    GCodeCommand *c = new GCodeCommand(1, parameters, controlParams.fourthAxisType);
-                    debug("OutLine G1_noF: %s", c->toString().toStdString().c_str());
+                    GCodeCommand *c = new GCodeCommand(commandCode, parameters, controlParams.fourthAxisType);
+                    debug("OutLine G%d_noF: %s", commandCode, c->toString().toStdString().c_str());
                     return c;
                 }
             } else {
@@ -1008,6 +1010,134 @@ QList<CodeCommand *> GCodeMarlin::levelLine(CodeCommand* command)
 
         debug("Generated: %d new lines", resultList.size());
 
+        return resultList;
+    } else if ((command->getType() == CodeCommand::G_COMMAND && (command->getCommand() == 2 || command->getCommand() == 3)))
+    {
+        //Algorithm extracted from Marlin firmwares
+        bool is_clockwise = false;
+        if (command->getCommand() == 2)
+        {
+            is_clockwise = true;
+        }
+
+        debug("Generating segments for an arc: Clockwise: %d", is_clockwise);
+        //Generate leveled segments for G3 and G4 arc commands.
+        GCodeCommand* gCommand = static_cast<GCodeCommand*>(command);
+        Point originPoint(lastLevelingPoint);
+
+        double origin_z = lastLevelingPoint.z;
+        originPoint.z = 0;
+
+        bool hasX, hasY, hasZ;
+        hasX = gCommand->getX(lastLevelingPoint.x);
+        hasY = gCommand->getY(lastLevelingPoint.y);
+        hasZ = gCommand->getZ(lastLevelingPoint.z);
+
+        //TODO think about what to do with the fourth axis.
+        if (!(hasX | hasY | hasZ))
+        {
+            //The command has only F or F and Fourth
+            resultList.append(command);
+            return resultList;
+        }
+        Point targetPoint(lastLevelingPoint);
+
+        targetPoint.z = 0;
+
+        double linear_travel = targetPoint.z - originPoint.z;
+
+        //Get the I and J parameters.
+        double offsetx,offsety;
+        if (!gCommand->getParameter('I', offsetx))
+            offsetx = 0.0;
+        if (!gCommand->getParameter('J', offsety))
+            offsety = 0.0;
+
+        debug("Offsets: %.3f, %.3f", offsetx, offsety);
+
+        //Calculate the arc radious from origin to center.
+        double radius = hypot(offsetx, offsety);
+        debug("Arc radius: %.3f", radius);
+
+        //We don't need to take into account the z coord.
+        Point center_point(originPoint.x + offsetx, originPoint.y + offsety, 0.0);
+
+        //Vector from center to origin
+        Vector r(-offsetx, -offsety, 0);
+//        //Vector from center to target
+        Vector rt(targetPoint - center_point);
+
+        //Angle between both previous vectors (arctan between cross and dot product(sen/cos))
+        double angular_travel = atan2(r.x*rt.y - r.y*rt.x, r.x*rt.x + r.y*rt.y);
+        if (angular_travel < 0){angular_travel += 2*M_PI;}
+        if (is_clockwise) { angular_travel -= 2*M_PI;}
+
+        debug("Arc angular travel: %.3f", angular_travel);
+
+        double millimeters_of_travel = hypot(angular_travel*radius, fabs(linear_travel));
+        debug("Linear travel: %.3f  -  Millimeters of travel: %.3f", linear_travel, millimeters_of_travel);
+
+        unsigned int segments = floor(millimeters_of_travel/MM_PER_ARC_SEGMENT);
+        debug("Segments: %d", segments);
+
+        double theta_per_segment = angular_travel/segments;
+        double linear_per_segment = linear_travel/segments;
+
+        Point arc_point;
+        double sin_Ti;
+        double cos_Ti;
+        double f;
+        bool hasf = gCommand->getF(f);
+        double delta = 0;
+        unsigned int i;
+        double z = origin_z;
+
+        //Calculate all segments but last one, as we will use the target point directly.
+        for (i = 1; i<segments; i++)
+        {
+            cos_Ti = cos(i*theta_per_segment);
+            sin_Ti = sin(i*theta_per_segment);
+            r.x = -offsetx*cos_Ti + offsety*sin_Ti;
+            r.y = -offsetx*sin_Ti - offsety*cos_Ti;
+
+            arc_point.x = center_point.x + r.x;
+            arc_point.y = center_point.y + r.y;
+            z += linear_per_segment;
+
+            interpolator->interpolate(arc_point.x, arc_point.y, delta);
+            arc_point.z = z;
+            arc_point.z += delta;
+            arc_point.z -= controlParams.zLevelingOffset;
+
+            GCodeCommand *c = new GCodeCommand(1,"");
+            c->setPoint(arc_point);
+            //Set F for the first segment.
+            if (hasf)
+            {
+                c->setF(f);
+                hasf = false;
+            }
+            debug("Generated intermediate command: %s", c->toString().toStdString().c_str());
+            resultList.append(c);
+        }
+
+        delta = 0;
+        targetPoint.z = lastLevelingPoint.z;
+        interpolator->interpolate(targetPoint.x, targetPoint.y, delta);
+        targetPoint.z += delta;
+        targetPoint.z -= controlParams.zLevelingOffset;
+
+        GCodeCommand *lastCommand = new GCodeCommand(1, "");
+        lastCommand->setPoint(targetPoint);
+        gCommand->setPoint(targetPoint);
+        if (hasf)
+        {
+            lastCommand->setF(f);
+        }
+        debug("Generated last command: %s", lastCommand->toString().toStdString().c_str());
+        resultList.append(lastCommand);
+        delete gCommand;
+        debug("Generated: %d new lines", resultList.size());
         return resultList;
     }
 

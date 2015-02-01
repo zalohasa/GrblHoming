@@ -29,6 +29,8 @@
 #define DEFAULT_AXIS_COUNT      3
 #define MAX_AXIS_COUNT          4
 
+#define MM_PER_ARC_SEGMENT 0.5
+
 
 
 class GCodeMarlin : public GCodeController
